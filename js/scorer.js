@@ -1,10 +1,12 @@
+// js/scorer.js
+
 export class Leg {
   constructor({ legId, startingScore = 501, doubleIn = false, doubleOut = true }) {
     this.id = legId;
     this.startingScore = startingScore;
     this.doubleIn = doubleIn;
     this.doubleOut = doubleOut;
-    this.scores = []; // {playerId, darts:[v1,v2,v3], remaining}
+    this.scores = []; // { playerId, darts: [v1, v2, v3], remaining }
     this.startTime = Date.now();
     this.winner = null;
   }
@@ -13,20 +15,54 @@ export class Leg {
     const total = darts.reduce((a, v) => a + v, 0);
     const prev = this.currentScore(playerId);
     const remaining = prev - total;
-    // Handle bust / double‑in/out etc. here …
+
+    // Bust: Wurf ignorieren, wenn Rest < 0
+    if (remaining < 0) return;
+
+    // Double-In: Erstes Leg nur mit Doppel starten
+    if (this.scores.length === 0 && this.doubleIn) {
+      const openedWithDouble = darts.some(v => v % 2 === 0);
+      if (!openedWithDouble) {
+        // ungültiges Öffnen → ignorieren
+        return;
+      }
+    }
+
     this.scores.push({ playerId, darts, remaining });
-    if (remaining === 0 /* plus Double‑Out Check */) {
+
+    // Double-Out: Letzter Dart muss ein Doppel sein
+    const lastDart = darts[darts.length - 1];
+    if (remaining === 0) {
+      if (this.doubleOut && lastDart % 2 !== 0) {
+        // ungültiges Auschecken → Bust
+        this.scores.pop();
+        return;
+      }
       this.winner = playerId;
       this.endTime = Date.now();
     }
   }
 
   currentScore(playerId) {
-    const last = [...this.scores].reverse().find(s => s.playerId === playerId);
-    return last ? last.remaining : this.startingScore;
+    // Gibt den letzten Restscore für playerId zurück oder startingScore
+    const lastEntry = [...this.scores].reverse().find(s => s.playerId === playerId);
+    return lastEntry ? lastEntry.remaining : this.startingScore;
   }
 
   get durationSeconds() {
-    return this.winner ? Math.round((this.endTime - this.startTime) / 1000) : null;
+    if (!this.winner) return null;
+    return Math.round((this.endTime - this.startTime) / 1000);
+  }
+
+  get throwCount() {
+    return this.scores.length;
+  }
+
+  get threeDartAverage() {
+    if (!this.scores.length) return null;
+    const totalScore = this.scores
+      .reduce((sum, s) => sum + s.darts.reduce((a, b) => a + b, 0), 0);
+    // durchschnitt auf 3 Darts hochgerechnet
+    return (totalScore / (this.scores.length)).toFixed(2);
   }
 }
