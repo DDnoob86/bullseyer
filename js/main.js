@@ -26,8 +26,64 @@ function updateRoute() {
 // --------------------------------------------------
 // 1) LOGIN‑ & REGISTRIER‑FLOW  (unverändert)
 // --------------------------------------------------
-function renderLogin() { /* ... wie zuvor ... */ }
-function renderRegister() { /* ... wie zuvor ... */ }
+async function renderLogin() {
+  document.getElementById('app').innerHTML = `
+    <div class="max-w-sm mx-auto">
+      <h2 class="text-xl font-semibold mb-4 text-center">Login</h2>
+      <form id="loginForm" class="flex flex-col gap-4">
+        <input type="email" id="email" class="input" placeholder="E-Mail" required>
+        <input type="password" id="password" class="input" placeholder="Passwort" required>
+        <button class="btn">Login</button>
+      </form>
+      <p class="mt-4 text-center">
+        Noch kein Konto? <a href="#/register" class="text-blue-500 underline">Registrieren</a>
+      </p>
+    </div>`;
+
+  document.getElementById('loginForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+
+    try {
+      await login({ email, password });
+      location.hash = '#/dashboard';
+    } catch (error) {
+      alert(`Login fehlgeschlagen: ${error.message}`);
+    }
+  };
+}
+
+async function renderRegister() {
+  document.getElementById('app').innerHTML = `
+    <div class="max-w-sm mx-auto">
+      <h2 class="text-xl font-semibold mb-4 text-center">Registrieren</h2>
+      <form id="registerForm" class="flex flex-col gap-4">
+        <input type="text" id="displayName" class="input" placeholder="Name" required>
+        <input type="email" id="email" class="input" placeholder="E-Mail" required>
+        <input type="password" id="password" class="input" placeholder="Passwort" required>
+        <button class="btn">Registrieren</button>
+      </form>
+      <p class="mt-4 text-center">
+        Schon ein Konto? <a href="#/login" class="text-blue-500 underline">Login</a>
+      </p>
+    </div>`;
+
+  document.getElementById('registerForm').onsubmit = async (e) => {
+    e.preventDefault();
+    const displayName = document.getElementById('displayName').value;
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+
+    try {
+      await signUp({ email, password, displayName });
+      alert('Registrierung erfolgreich! Bitte einloggen.');
+      location.hash = '#/login';
+    } catch (error) {
+      alert(`Registrierung fehlgeschlagen: ${error.message}`);
+    }
+  };
+}
 
 // --------------------------------------------------
 // 2) DASHBOARD  (unverändert)
