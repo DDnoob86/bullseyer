@@ -1,6 +1,6 @@
 export function aggregateStats(throws) {
   /*
-    throws = [{playerId, darts:[d1,d2,d3], legId, isFinish} ...]
+    throws = [{playerId, darts:[d1,d2,d3], legId, isFinish} ]
   */
   const stats = new Map();
   const get = id => stats.get(id) || (stats.set(id, empty()), stats.get(id));

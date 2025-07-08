@@ -45,7 +45,7 @@ export class Leg {
 
   currentScore(playerId) {
     // Gibt den letzten Restscore für playerId zurück oder startingScore
-    const lastEntry = [...this.scores].reverse().find(s => s.playerId === playerId);
+    const lastEntry = [this.scores].reverse().find(s => s.playerId === playerId);
     return lastEntry ? lastEntry.remaining : this.startingScore;
   }
 

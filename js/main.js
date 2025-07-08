@@ -15,31 +15,21 @@ supabase.auth.onAuthStateChange((event, session) => {
 // -----------------------------
 // Mini-Router (#/login, #/dashboard, #/scorer, #/stats)
 // -----------------------------
-const routes = { 
-  login: renderLogin, 
-  register: renderRegister, 
-  dashboard: renderDashboard, 
-  scorer: renderScorer, 
-  stats: renderStats 
+window.onhashchange = () => {
+  const page = window.location.hash || '#/login';
+  if (page.startsWith('#/login'))      renderLogin();
+  else if (page.startsWith('#/register')) renderRegister();
+  else if (page.startsWith('#/dashboard')) renderDashboard();
+  else if (page.startsWith('#/scorer'))   renderScorer();
+  else if (page.startsWith('#/stats'))    renderStats();
+  else renderLogin();
 };
 
-// Hashchange-Routing aktivieren
-window.addEventListener('hashchange', updateRoute);
-updateRoute();
-
-function updateRoute() {
-  // Wenn noch kein Hash in der URL und DEV-Mode, direkt Dashboard
-  let hash = window.location.hash.slice(2);
-  if (!hash) {
-    hash = DEV ? 'dashboard' : 'login';
-    window.location.hash = `#/${hash}`;
-  }
-  // Jetzt normal routen
-  (routes[hash] || (DEV ? renderDashboard : renderLogin))();
-}
+// Sofort aufrufen
+window.onhashchange();
 
 // --------------------------------------------------
-// 1) LOGIN / REGISTRIERUNG
+// 1) LOGIN / REGISTRIEREN
 // --------------------------------------------------
 function renderLogin() {
   const app = document.getElementById('app');
@@ -70,26 +60,17 @@ function renderRegister() {
       <input name="email" type="email" placeholder="E-Mail" class="input" required />
       <input name="pw" type="password" placeholder="Passwort" class="input" required />
       <button class="btn">Konto erstellen</button>
-      <p class="text-sm text-center">Bereits registriert? <a href="#/login">Login</a></p>
     </form>`;
   document.getElementById('regForm').onsubmit = async e => {
     e.preventDefault();
-    const name = e.target.name.value.trim();
-    const email = e.target.email.value.trim();
-    const password = e.target.pw.value;
+    const { name, email, pw: password } = e.target.elements;
     try {
-      let { user } = await signUp({ email, password, displayName: name });
-      if (!user) {
-        const { data } = await supabase.auth.getUser();
-        user = data.user;
-      }
-      if (!user) {
-        alert('Bitte E-Mail bestätigen.');
-        return;
-      }
-      const { error } = await supabase.from('users').insert({ id: user.id, name });
-      if (error) throw error;
-      alert('Registrierung erfolgreich. Bitte einloggen.');
+      await signUp({
+        email: email.value.trim(),
+        password: password.value,
+        options: { data: { name: name.value.trim() } }
+      });
+      alert('Bestätigungs‑Mail verschickt!');
       window.location.hash = '#/login';
     } catch (err) {
       alert(err.error_description || err.message);
@@ -126,103 +107,120 @@ async function renderDashboard() {
     return;
   }
 
-  // 3) Wenn keine Spieler: Hinweis anzeigen
-  if (!players.length) {
-    app.innerHTML = `
-      <div class="relative">
-        <button id="logoutBtn2" class="absolute top-4 right-4">Logout</button>
-      </div>
-      <p class="text-center mt-8">Noch keine Spieler.</p>
-    `;
-    document.getElementById('logoutBtn2').onclick = async () => {
-      await logout();
-      window.location.hash = '#/login';
-    };
-    return;
-  }
-
-  // 4) Echtes Dashboard-Formular rendern
+  // 3) Formular anzeigen
   app.innerHTML = `
     <div class="relative">
       <button id="logoutBtn3" class="absolute top-4 right-4">Logout</button>
-      <h2 class="text-2xl text-center mt-8">Dashboard</h2>
+      <h2 class="text-2xl text-center mt-8">Spieltag konfigurieren</h2>
     </div>
-    <form id="dayForm" class="max-w-lg mx-auto mt-6 space-y-4">
-      <h3 class="text-xl text-center">Spieler für heute</h3>
-      <div id="playerList" class="flex flex-col items-center gap-2 p-4 border rounded"></div>
-      <label class="flex items-center gap-2">
-        <span>Bretter:</span>
-        <input name="boards" type="number" value="2" min="1" class="input w-16" />
-      </label>
+    <form id="cfgForm" class="max-w-md mx-auto mt-6 space-y-4">
+      <div>
+        <label class="block mb-1">Best of Sets</label>
+        <input name="boSets" type="number" min="1" max="21" value="3" class="input w-full" />
+      </div>
+      <div>
+        <label class="block mb-1">Best of Legs</label>
+        <input name="boLegs" type="number" min="1" max="11" value="3" class="input w-full" />
+      </div>
+      <div>
+        <label class="block mb-1">Double Out</label>
+        <input name="doubleOut" type="checkbox" class="mr-2 align-middle" checked /> Double out nötig
+      </div>
+      <h3 class="text-lg mt-6 mb-2">Spieler (blau&nbsp;= gewählt)</h3>
+      <div id="playerList" class="border rounded p-4 max-h-64 overflow-y-auto"></div>
       <button class="bg-green-500 hover:bg-green-600 text-white rounded-full w-full py-2 transition">
         Spieltag starten
       </button>
     </form>
   `;
+
   // Logout im Formular
   document.getElementById('logoutBtn3').onclick = async () => {
     await logout();
     window.location.hash = '#/login';
   };
 
-// 5) Player-Divs anlegen (vertikal übereinander, klickbar, Blau beim Klick)
-const selectedPlayers = new Set();
-const playerListEl = document.getElementById('playerList');
-playerListEl.innerHTML = '';  // vorher leeren
+  // 4) Player-Divs anlegen (vertikal übereinander, klickbar, blau beim Klick)
+  const selectedPlayers = new Set();
+  const playerListEl = document.getElementById('playerList');
+  playerListEl.innerHTML = '';
+  players.forEach(p => {
+    const div = document.createElement('div');
+    div.textContent = p.name;
+    div.className = 'cursor-pointer text-2xl text-center my-2';
+    div.onclick = () => {
+      if (selectedPlayers.has(p.id)) {
+        selectedPlayers.delete(p.id);
+        div.classList.remove('text-blue-500');
+      } else {
+        selectedPlayers.add(p.id);
+        div.classList.add('text-blue-500');
+      }
+    };
+    playerListEl.appendChild(div);
+  });
 
-players.forEach(p => {
-  const div = document.createElement('div');
-  div.textContent = p.name;
-  // vertikal anordnen und zentrieren
-  div.className = 'cursor-pointer text-2xl text-center my-2';
-  // Klick toggelt blau/normal
-  div.onclick = () => {
-    if (selectedPlayers.has(p.id)) {
-      selectedPlayers.delete(p.id);
-      div.classList.remove('text-blue-500');
-    } else {
-      selectedPlayers.add(p.id);
-      div.classList.add('text-blue-500');
-    }
-  };
-  playerListEl.appendChild(div);
-});
-
-  // 6) Spieltag-Start-Handler
-  document.getElementById('dayForm').onsubmit = async e => {
+  // 5) Form-Submit → Spieltag & Matches anlegen
+  document.getElementById('cfgForm').onsubmit = async e => {
     e.preventDefault();
-    const ids = Array.from(selectedPlayers);
-    const boards = parseInt(e.target.boards.value, 10) || 1;
-    if (ids.length < 2) {
-      alert('Mindestens 2 Spieler');
+    const { boSets, boLegs, doubleOut } = e.target.elements;
+
+    if (selectedPlayers.size < 2) {
+      alert('Mindestens zwei Spieler auswählen');
       return;
     }
-    try {
-      const { data: gd } = await supabase
-        .from('gamedays')
-        .insert({ date: new Date().toISOString().slice(0, 10) })
-        .select()
-        .single();
-      localStorage.setItem('bullseyer_gameday', gd.id);
-      const matches = generateRoundRobin(ids).flatMap((rnd, i) =>
-        rnd.map((pair, j) => ({
+
+    const boS = parseInt(boSets.value, 10);
+    const boL = parseInt(boLegs.value, 10);
+
+    if (boS % 2 === 0 || boL % 2 === 0) {
+      alert('Best‑of muss ungerade sein (1,3,5…)');
+      return;
+    }
+
+    // 1) Spieltag speichern
+    const { data: gd, error: gdErr } = await supabase
+      .from('gamedays')
+      .insert({ date: new Date().toISOString().slice(0, 10) })
+      .select()
+      .single();
+    if (gdErr) { 
+      alert(`Fehler beim Anlegen der Matches:\n${gdErr.message}`);
+      return;
+    }
+    localStorage.setItem('bullseyer_gameday', gd.id);
+
+    // Paarungen aus Round-Robin → nur Zweier-Arrays
+    const pairings = generateRoundRobin([...selectedPlayers]).flat();
+
+    // Filtere ungültige Paarungen raus (z.B. [id, null] oder [null, id])
+    const validPairings = pairings.filter(([p1, p2]) => p1 && p2);
+
+    console.log('SelectedPlayers:', [...selectedPlayers]);
+    console.log('ValidPairings:', validPairings);
+
+    const { error: matchErr } = await supabase
+      .from('matches')
+      .insert(
+        validPairings.map(([p1, p2], i) => ({
           gameday_id: gd.id,
-          board: `Board ${((i * rnd.length + j) % boards) + 1}`,
-          p1_id: pair[0],
-          p2_id: pair[1],
-          best_of_sets: 1,
-          best_of_legs: 3
+          p1_id: p1,
+          p2_id: p2,
+          best_of_sets: boS,
+          best_of_legs: boL,
+          double_out: doubleOut.checked,
+          board: (i % 4) + 1
         }))
       );
-      await supabase.from('matches').insert(matches);
-      window.location.hash = '#/scorer';
-    } catch (err) {
-      alert(err.message);
+    if (matchErr) {
+      alert(`Fehler beim Anlegen der Matches:\n${matchErr.message}`);
+      return;
     }
+
+    // Nach erfolgreichem Anlegen weiterleiten:
+    window.location.hash = '#/scorer';
   };
-}
-
-
+} // <-- Die schließende Klammer der Funktion steht jetzt korrekt!
 
 // --------------------------------------------------
 // 3) SCORER mit Sets & Legs & Turn Toggle
@@ -240,53 +238,27 @@ let currentPlayer = 'p1';
 async function renderScorer() {
   const app = document.getElementById('app');
 
-  // Board-Auswahl
+  // 1) Board-Auswahl
   if (!currentBoard) {
     const boards = await fetchBoardsForToday();
     if (!boards.length) { app.innerHTML = '<p class="text-center mt-8">Keine Spiele heute</p>'; return; }
-    app.innerHTML = `<div class="max-w-sm mx-auto mt-8 space-y-4"><h3 class="text-xl text-center">Welches Board?</h3>${boards.map(b=>`<button class="btn w-full" data-board="${b}">${b}</button>`).join('')}</div>`;
+    app.innerHTML = `<div class="max-w-sm mx-auto mt-8 space-y-4">
+    ${boards.map(b => `<button class="btn w-full" data-board="${b}">Board ${b}</button>`).join('')}
+</div>`;
     app.querySelectorAll('[data-board]').forEach(btn => btn.onclick = () => { currentBoard = btn.dataset.board; localStorage.setItem('bullseyer_board', currentBoard); renderScorer(); });
     return;
   }
 
-// 2) Match-Auswahl
-if (!currentMatch) {
-  // 1) Matches aus der DB laden
-  const matches = await fetchOpenMatches(currentBoard);
-  console.log('matches raw:', matches);
+  // 2) Match-Auswahl
+  if (!currentMatch) {
+    const matches = await fetchOpenMatches(currentBoard);
+    if (!matches.length) { app.innerHTML = '<p class="text-center mt-8">Kein offenes Match</p>'; return; }
+    app.innerHTML = `<div class="max-w-sm mx-auto mt-8 space-y-4">${matches.map(m => `<button class="btn w-full" data-mid="${m.id}">${m.p1.name} vs ${m.p2.name}</button>`).join('')}</div>`;
+    app.querySelectorAll('[data-mid]').forEach(btn => btn.onclick = () => { const m = matches.find(x=>x.id === btn.dataset.mid); startMatch(m); });
+    return;
+  }
 
-
-  // 2) Container mit Überschrift und leeren Platzhalter setzen
-  app.innerHTML = `
-    <h3 class="text-xl text-center mt-6">Matches auf ${currentBoard}</h3>
-    <div id="matchList" class="max-w-md mx-auto mt-4 space-y-2"></div>
-  `;
-
-  // 3) Container holen und alle bisherigen Kinder entfernen
-  const matchListEl = document.getElementById('matchList');
-  matchListEl.replaceChildren();  // <— löscht wirklich alles
-
-  // 4) Duplikate anhand der Match-ID herausfiltern
-  const seen = new Set();
-  const uniqueMatches = matches.filter(m => {
-    if (seen.has(m.id)) return false;
-    seen.add(m.id);
-    return true;
-  });
-
-  // 5) Buttons für jeden eindeutigen Match erzeugen
-  uniqueMatches.forEach(m => {
-    const btn = document.createElement('button');
-    btn.className = 'btn flex justify-between';
-    btn.textContent = `${m.p1.name} vs ${m.p2.name}`;
-    btn.onclick = () => startMatch(m);
-    matchListEl.appendChild(btn);
-  });
-
-  return;
-}
-
-  // Live-Scorer
+  // 3) Live-Scorer
   renderLiveScorer(app);
 }
 
@@ -294,7 +266,7 @@ function startMatch(m) {
   currentMatch = m;
   currentSetNo = 1;
   currentLegNo = 1;
-  setsWon = { p1:0, p2:0 };
+  setsWon = { p1: 0, p2: 0 };
   currentPlayer = 'p1';
   resetLeg();
   renderScorer();
@@ -306,17 +278,34 @@ function resetLeg() {
 }
 
 function renderLiveScorer(app) {
-  const p1 = currentMatch.p1.name, p2 = currentMatch.p2.name;
-  const bestLeg = currentMatch.best_of_legs, bestSet = currentMatch.best_of_sets;
+  const p1 = currentMatch.p1.name,
+        p2 = currentMatch.p2.name;
+  const bestLeg = currentMatch.best_of_legs,
+        bestSet = currentMatch.best_of_sets;
   const isP1Turn = currentPlayer === 'p1';
 
   app.innerHTML = `
     <div class="max-w-md mx-auto mt-6 space-y-4">
       <h2 class="text-xl text-center">${p1} vs ${p2}</h2>
-      <div class="flex justify-center gap-4"><span>Set ${currentSetNo}/${bestSet}</span><span>Leg ${currentLegNo}/${bestLeg}</span></div>
-      <div class="grid grid-cols-2 text-center gap-4">
-        <div style="${isP1Turn?'font-size:2em;font-weight:bold;':''}"><strong id="remP1">${remainingP1}</strong><br>${p1}</div>
-        <div style="${!isP1Turn?'font-size:2em;font-weight:bold;':''}"><strong id="remP2">${remainingP2}</strong><br>${p2}</div>
+      <div class="flex justify-center gap-4">
+        <span>Set ${currentSetNo}/${bestSet}</span>
+        <span>Leg ${currentLegNo}/${bestLeg}</span>
+      </div>
+      <div class="grid grid-cols-2 gap-8 mt-4 text-lg">
+        <div class="text-left">
+          <div class="flex items-center gap-1">
+            <span id="legsP1" class="font-semibold">${setsWon.p1}</span>
+            <span>${p1}</span>
+          </div>
+          <strong id="remP1">${remainingP1}</strong>
+        </div>
+        <div class="text-right">
+          <strong id="remP2">${remainingP2}</strong><br>
+          <div class="flex items-center gap-1 justify-end">
+            <span>${p2}</span>
+            <span id="legsP2" class="font-semibold">${setsWon.p2}</span>
+          </div>
+        </div>
       </div>
       <form id="throwForm" class="flex justify-center gap-2">
         <input type="number" name="score" class="input w-32 text-lg text-center" placeholder="Score" required />
@@ -325,23 +314,15 @@ function renderLiveScorer(app) {
       <div class="flex justify-center gap-2">
         <button id="legWon" class="btn bg-green-600 text-white hidden">Leg gewonnen</button>
         <button id="setWon" class="btn bg-blue-600 text-white hidden">Set gewonnen</button>
-        <!-- Roten Rückgängig-Button einfügen: -->
-        <button id="undoBtn" class="bg-red-500 hover:bg-red-600 text-white rounded-full py-1 px-3 transition ml-2">
-          ← Rückgängig
-        </button>
-        
+        <button id="undoBtn" class="bg-red-500 hover:bg-red-600 text-white rounded-full py-1 px-3 transition ml-2">← Rückgängig</button>
       </div>
     </div>`;
 
-      // Rückgängig-Handler: letzten Wurf entfernen
+  // Rückgängig-Handler: letzten Wurf entfernen
   document.getElementById('undoBtn').onclick = () => {
     const last = currentLeg.scores.pop();
     if (!last) return;
-
-    // Wer war dran?
     currentPlayer = last.playerId === currentMatch.p1_id ? 'p1' : 'p2';
-
-    // Restscore neu setzen
     if (currentPlayer === 'p1') {
       remainingP1 = currentLeg.currentScore(currentMatch.p1_id);
       document.getElementById('remP1').textContent = remainingP1;
@@ -349,49 +330,40 @@ function renderLiveScorer(app) {
       remainingP2 = currentLeg.currentScore(currentMatch.p2_id);
       document.getElementById('remP2').textContent = remainingP2;
     }
-
-    // Buttons verbergen
-    document.getElementById('legWon').classList.add('hidden');
-    document.getElementById('setWon').classList.add('hidden');
-
-    // Scorer-Ansicht aktualisieren
     renderLiveScorer(app);
   };
 
-
-  const form = document.getElementById('throwForm');
-  form.onsubmit = e => {
+  // Score eintragen
+  document.getElementById('throwForm').onsubmit = e => {
     e.preventDefault();
-    const sc = parseInt(form.score.value,10)||0;
-    if (sc > 180) {
-  alert('😡 Maximal 180 Punkte erlaubt!');
-  return;
-}
-
-    form.reset();
-    const prev = isP1Turn?remainingP1:remainingP2;
+    const sc = parseInt(e.target.score.value, 10);
+    if (sc > 180) { alert('😡 Maximal 180 Punkte erlaubt!'); return; }
+    e.target.reset();
+    const prev = isP1Turn ? remainingP1 : remainingP2;
     const rem = prev - sc;
-    if(rem<0){ alert('Bust!'); return; }
-
-    // Punktabzug
-    if(isP1Turn){ remainingP1 = rem; document.getElementById('remP1').textContent = rem; }
-    else        { remainingP2 = rem; document.getElementById('remP2').textContent = rem; }
-
-    currentLeg.addThrow({ playerId: isP1Turn?currentMatch.p1_id:currentMatch.p2_id, darts:[sc] });
-
-    if(rem===0){
+    if (rem < 0) { alert('Bust!'); return; }
+    if (isP1Turn) { remainingP1 = rem; document.getElementById('remP1').textContent = rem; }
+    else          { remainingP2 = rem; document.getElementById('remP2').textContent = rem; }
+    currentLeg.addThrow({ playerId: isP1Turn ? currentMatch.p1_id : currentMatch.p2_id, darts: [sc] });
+    if (rem === 0) {
       document.getElementById('legWon').classList.remove('hidden');
     } else {
-      currentPlayer = isP1Turn?'p2':'p1';
+      currentPlayer = isP1Turn ? 'p2' : 'p1';
       renderLiveScorer(app);
     }
   };
 
+  // Leg gewonnen
   document.getElementById('legWon').onclick = () => {
-    const win = remainingP1===0?'p1':'p2'; setsWon[win]++;
+    const win = remainingP1 === 0 ? 'p1' : 'p2';
+    setsWon[win]++;
+    document.getElementById('legsP1').textContent = setsWon.p1;
+    document.getElementById('legsP2').textContent = setsWon.p2;
+
     saveLeg(currentSetNo, currentLegNo);
     document.getElementById('legWon').classList.add('hidden');
-    if(setsWon.p1>bestLeg/2||setsWon.p2>bestLeg/2||currentLegNo>=bestLeg){
+
+    if (setsWon.p1 > bestLeg / 2 || setsWon.p2 > bestLeg / 2 || currentLegNo >= bestLeg) {
       document.getElementById('setWon').classList.remove('hidden');
     } else {
       currentLegNo++;
@@ -401,24 +373,31 @@ function renderLiveScorer(app) {
     }
   };
 
+  // Set gewonnen / Match beendet
   document.getElementById('setWon').onclick = async () => {
-    if(setsWon.p1>bestSet/2||setsWon.p2>bestSet/2||currentSetNo>=bestSet){
+    if (setsWon.p1 > bestSet / 2 || setsWon.p2 > bestSet / 2 || currentSetNo >= bestSet) {
       alert('Match beendet!');
-      await supabase.from('matches').update({ finished_at: new Date().toISOString() }).eq('id',currentMatch.id);
+      await supabase
+        .from('matches')
+        .update({ finished_at: new Date().toISOString() })
+        .eq('id', currentMatch.id);
       currentMatch = null;
       renderScorer();
     } else {
       currentSetNo++;
-      currentLegNo=1;
-      setsWon={p1:0,p2:0};
-      currentPlayer='p1';
+      currentLegNo = 1;
+      setsWon = { p1: 0, p2: 0 };
+      currentPlayer = 'p1';
       resetLeg();
       renderScorer();
     }
   };
 }
 
-async function saveLeg(setNo,legNo){
+// --------------------------------------------------
+// Datenbank-Helper
+// --------------------------------------------------
+async function saveLeg(setNo, legNo) {
   await supabase.from('legs').insert({
     id: currentLeg.id,
     match_id: currentMatch.id,
@@ -428,39 +407,43 @@ async function saveLeg(setNo,legNo){
     start_score: 501,
     finish_darts: currentLeg.throwCount,
     duration_s: currentLeg.durationSeconds,
-    winner_id: remainingP1===0?currentMatch.p1_id:currentMatch.p2_id
+    winner_id: remainingP1 === 0 ? currentMatch.p1_id : currentMatch.p2_id
   });
 }
 
-async function fetchBoardsForToday(){
-  const today=new Date().toISOString().slice(0,10);
-  const { data: gs, error: gdErr } = await supabase.from('gamedays').select('id').eq('date', today);
-  if(gdErr){ console.error(gdErr); return []; }
-  const ids = (gs||[]).map(g=>g.id);
-  const { data: ms, error: mErr } = await supabase.from('matches').select('board').is('finished_at',null).in('gameday_id', ids);
-  if(mErr){ console.error(mErr); return []; }
-  return [...new Set(ms.map(m=>m.board))];
+async function fetchBoardsForToday() {
+  const today = new Date().toISOString().slice(0, 10);
+  const { data: gs, error: gdErr } = 
+    await supabase
+    .from('gamedays')
+    .select('id')
+    .eq('date', today);
+  if (gdErr) { console.error(gdErr); return []; }
+  const ids = (gs || []).map(g => g.id);
+  const { data: ms, error: mErr } = await supabase.from('matches').select('board').is('finished_at', null).in('gameday_id', ids);
+  if (mErr) { console.error(mErr); return []; }
+  return [...new Set(ms.map(m => m.board))];
 }
 
-async function fetchOpenMatches(board){
-  // Lese die Spieltags-ID aus localStorage
+async function fetchOpenMatches(board) {
   const gamedayId = localStorage.getItem('bullseyer_gameday');
-  if (!gamedayId) return [];
+  if (!gamedayId) {
+    console.log('fetchOpenMatches:', { board, gamedayId });
+    return [];
+  }
 
-  // Hole nur die offenen Matches für genau diesen Spieltag & dieses Board
+  const boardNo = Number(board);            // ← String → Zahl
   const { data: matches, error } = await supabase
     .from('matches')
     .select('*, p1:p1_id(name), p2:p2_id(name)')
-    .eq('board', board)
+    .eq('board', boardNo)                   // ← jetzt gleicher Typ
     .eq('gameday_id', gamedayId)
     .is('finished_at', null);
-  if (error) {
-    console.error('Error fetching open matches:', error);
-    return [];
-  }
+  if (error) { console.error(error); return []; }
+  console.log('fetchOpenMatches:', { board, gamedayId, matches }); // <-- Hier siehst du die Matches!
   return matches;
 }
 
-function renderStats(){
-  // Platzhalter für Statistik-View
+function renderStats() {
+  document.getElementById('app').innerHTML = '<p class="text-center mt-8">Statistik folgt…</p>';
 }

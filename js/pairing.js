@@ -8,13 +8,13 @@ function shuffle(arr) {
 }
 
 export function generateRoundRobin(players) {
-  if (players.length % 2) players.push(null); // bye
-  const n = players.length;
+  let p = players.slice(); // Kopie!
+  if (p.length % 2) p.push(null); // bye
+  const n = p.length;
   const half = n / 2;
   const rounds = n - 1;
   const schedule = [];
 
-  let p = players.slice();
   for (let r = 0; r < rounds; r++) {
     const round = [];
     for (let i = 0; i < half; i++) {
@@ -23,7 +23,8 @@ export function generateRoundRobin(players) {
       if (home && away) round.push([home, away]);
     }
     schedule.push(round);
-    p = [p[0], ...p.slice(-1), ...p.slice(1, -1)]; // rotate clock‑wise
+    // Rotation:
+    p = [p[0], ...p.slice(-1), ...p.slice(1, -1)];
   }
   return schedule;
 }

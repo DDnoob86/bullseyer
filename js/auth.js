@@ -43,7 +43,7 @@ export async function getCurrentUser() {
 
 /**
  * Listener für Auth-Status-Änderungen (Login / Logout / Token-Refresh).
- * onAuthChange(user => { ... });
+ * onAuthChange(user => {  });
  */
 export function onAuthChange(callback) {
   supabase.auth.onAuthStateChange((_event, session) => {
