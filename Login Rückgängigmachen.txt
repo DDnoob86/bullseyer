@@ -1,0 +1,71 @@
+Anleitung zum Rückgängigmachen der temporären DEV-MODE-Änderungen in `main.js`:
+
+1. **Auth-Listener wieder aktivieren**
+
+   * In der obersten Sektion (direkt unter den `routes`-Definitionen) entfernst du die Kommentarzeichen (`//`) vor:
+
+     ```js
+     supabase.auth.onAuthStateChange((event, session) => {
+       if (event === 'SIGNED_IN')  window.location.hash = '#/dashboard';
+       if (event === 'SIGNED_OUT') window.location.hash = '#/login';
+     });
+     ```
+
+2. **Hashchange-Listener wieder aktivieren**
+
+   * Direkt unterhalb des auskommentierten Auth-Listeners entfernst du die Kommentarzeichen vor:
+
+     ```js
+     window.addEventListener('hashchange', updateRoute);
+     updateRoute();
+     ```
+
+3. **Direktes `renderDashboard()` entfernen**
+
+   * Lösche oder kommentiere die Zeile aus, die das Dashboard sofort aufruft:
+
+     ```js
+     renderDashboard();
+     ```
+
+4. **Eventuelle zusätzliche DEV-MODE-Codeblöcke entfernen**
+
+   * Achte darauf, keine weiteren auskommentierten Stellen zum DEV-MODE im Datei-Oberteil oder in `updateRoute` zu belassen.
+
+5. **Datei speichern & Seite neu laden**
+
+   * Speichere die `main.js` und lade deine WebApp neu. Du landest jetzt wieder im Standard-Flow:
+
+     * Unautorisierte Aufrufe leiten auf `#/login` weiter.
+     * Nach dem Login/Logout wird automatisch zu den korrekten Routen navigiert.
+
+---
+
+So stellst du den normalen Authentifizierungs- und Routing-Flow wieder her.
+
+
+Den Code vom 7.7.25
+//Auskommentiert am 7.7.25
+//window.addEventListener('hashchange', updateRoute);
+//updateRoute();
+//function updateRoute() {
+  //const hash = window.location.hash.slice(2) || 'login';
+  //(routes[hash] || renderLogin)();
+//}
+die Hashtags entfernen
+
+und folgendes wieder ausklammern
+
+window.addEventListener('hashchange', updateRoute);
+updateRoute();
+
+function updateRoute() {
+  // Wenn noch kein Hash in der URL und DEV-Mode, direkt Dashboard
+  let hash = window.location.hash.slice(2);
+  if (!hash) {
+    hash = DEV ? 'dashboard' : 'login';
+    window.location.hash = `#/${hash}`;
+  }
+  // Jetzt normal routen
+  (routes[hash] || (DEV ? renderDashboard : renderLogin))();
+}

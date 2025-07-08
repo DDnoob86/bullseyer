@@ -4,15 +4,38 @@ import { generateRoundRobin } from './pairing.js';
 import { Leg } from './scorer.js';
 import { exportGameDay } from './export.js';
 
+const DEV = true;
+
+// Auth-Listener aktivieren
+supabase.auth.onAuthStateChange((event, session) => {
+  if (event === 'SIGNED_IN')  window.location.hash = '#/dashboard';
+  if (event === 'SIGNED_OUT') window.location.hash = '#/login';
+});
+
 // -----------------------------
 // Mini-Router (#/login, #/dashboard, #/scorer, #/stats)
 // -----------------------------
-const routes = { login: renderLogin, register: renderRegister, dashboard: renderDashboard, scorer: renderScorer, stats: renderStats };
+const routes = { 
+  login: renderLogin, 
+  register: renderRegister, 
+  dashboard: renderDashboard, 
+  scorer: renderScorer, 
+  stats: renderStats 
+};
+
+// Hashchange-Routing aktivieren
 window.addEventListener('hashchange', updateRoute);
 updateRoute();
+
 function updateRoute() {
-  const hash = window.location.hash.slice(2) || 'login';
-  (routes[hash] || renderLogin)();
+  // Wenn noch kein Hash in der URL und DEV-Mode, direkt Dashboard
+  let hash = window.location.hash.slice(2);
+  if (!hash) {
+    hash = DEV ? 'dashboard' : 'login';
+    window.location.hash = `#/${hash}`;
+  }
+  // Jetzt normal routen
+  (routes[hash] || (DEV ? renderDashboard : renderLogin))();
 }
 
 // --------------------------------------------------
@@ -79,29 +102,46 @@ function renderRegister() {
 // --------------------------------------------------
 async function renderDashboard() {
   const app = document.getElementById('app');
+  // 1) Lade-State anzeigen
   app.innerHTML = `
     <div class="relative">
       <button id="logoutBtn" class="absolute top-4 right-4">Logout</button>
       <h2 class="text-2xl text-center mt-8">Dashboard</h2>
     </div>
-    <p class="text-center mt-4">Lade Spieler…</p>`;
-  document.getElementById('logoutBtn').onclick = async () => { await logout(); window.location.hash = '#/login'; };
+    <p class="text-center mt-4">Lade Spieler…</p>
+  `;
+  // Logout-Handler
+  document.getElementById('logoutBtn').onclick = async () => {
+    await logout();
+    window.location.hash = '#/login';
+  };
 
-  const { data: players, error } = await supabase.from('users').select('id,name').order('name');
+  // 2) Spieler aus Supabase holen
+  const { data: players, error } = await supabase
+    .from('users')
+    .select('id,name')
+    .order('name');
   if (error) {
     app.innerHTML = `<p class="text-red-600 text-center mt-8">${error.message}</p>`;
     return;
   }
+
+  // 3) Wenn keine Spieler: Hinweis anzeigen
   if (!players.length) {
     app.innerHTML = `
       <div class="relative">
         <button id="logoutBtn2" class="absolute top-4 right-4">Logout</button>
       </div>
-      <p class="text-center mt-8">Noch keine Spieler.</p>`;
-    document.getElementById('logoutBtn2').onclick = async () => { await logout(); window.location.hash = '#/login'; };
+      <p class="text-center mt-8">Noch keine Spieler.</p>
+    `;
+    document.getElementById('logoutBtn2').onclick = async () => {
+      await logout();
+      window.location.hash = '#/login';
+    };
     return;
   }
 
+  // 4) Echtes Dashboard-Formular rendern
   app.innerHTML = `
     <div class="relative">
       <button id="logoutBtn3" class="absolute top-4 right-4">Logout</button>
@@ -109,35 +149,69 @@ async function renderDashboard() {
     </div>
     <form id="dayForm" class="max-w-lg mx-auto mt-6 space-y-4">
       <h3 class="text-xl text-center">Spieler für heute</h3>
-      <div id="playerList" class="grid grid-cols-2 gap-2 p-4 border rounded"></div>
+      <div id="playerList" class="flex flex-col items-center gap-2 p-4 border rounded"></div>
       <label class="flex items-center gap-2">
         <span>Bretter:</span>
         <input name="boards" type="number" value="2" min="1" class="input w-16" />
       </label>
-      <button class="btn w-full">Spieltag starten</button>
-    </form>`;
-  document.getElementById('logoutBtn3').onclick = async () => { await logout(); window.location.hash = '#/login'; };
+      <button class="bg-green-500 hover:bg-green-600 text-white rounded-full w-full py-2 transition">
+        Spieltag starten
+      </button>
+    </form>
+  `;
+  // Logout im Formular
+  document.getElementById('logoutBtn3').onclick = async () => {
+    await logout();
+    window.location.hash = '#/login';
+  };
 
-  const list = document.getElementById('playerList');
-  players.forEach(p => {
-    const lbl = document.createElement('label');
-    lbl.className = 'flex items-center gap-2';
-    lbl.innerHTML = `<input type="checkbox" name="player" value="${p.id}" /> <span>${p.name}</span>`;
-    list.appendChild(lbl);
-  });
+// 5) Player-Divs anlegen (vertikal übereinander, klickbar, Blau beim Klick)
+const selectedPlayers = new Set();
+const playerListEl = document.getElementById('playerList');
+playerListEl.innerHTML = '';  // vorher leeren
 
+players.forEach(p => {
+  const div = document.createElement('div');
+  div.textContent = p.name;
+  // vertikal anordnen und zentrieren
+  div.className = 'cursor-pointer text-2xl text-center my-2';
+  // Klick toggelt blau/normal
+  div.onclick = () => {
+    if (selectedPlayers.has(p.id)) {
+      selectedPlayers.delete(p.id);
+      div.classList.remove('text-blue-500');
+    } else {
+      selectedPlayers.add(p.id);
+      div.classList.add('text-blue-500');
+    }
+  };
+  playerListEl.appendChild(div);
+});
+
+  // 6) Spieltag-Start-Handler
   document.getElementById('dayForm').onsubmit = async e => {
     e.preventDefault();
-    const ids = [...e.target.querySelectorAll('input[name=player]:checked')].map(i => i.value);
+    const ids = Array.from(selectedPlayers);
     const boards = parseInt(e.target.boards.value, 10) || 1;
-    if (ids.length < 2) { alert('Mindestens 2 Spieler'); return; }
+    if (ids.length < 2) {
+      alert('Mindestens 2 Spieler');
+      return;
+    }
     try {
-      const { data: gd } = await supabase.from('gamedays').insert({ date: new Date().toISOString().slice(0,10) }).select().single();
-      const matches = generateRoundRobin(ids).flatMap((rnd,i) =>
-        rnd.map((pair,j) => ({
+      const { data: gd } = await supabase
+        .from('gamedays')
+        .insert({ date: new Date().toISOString().slice(0, 10) })
+        .select()
+        .single();
+      localStorage.setItem('bullseyer_gameday', gd.id);
+      const matches = generateRoundRobin(ids).flatMap((rnd, i) =>
+        rnd.map((pair, j) => ({
           gameday_id: gd.id,
-          board: `Board ${(i * rnd.length + j) % boards + 1}`,
-          p1_id: pair[0], p2_id: pair[1], best_of_sets: 1, best_of_legs: 3
+          board: `Board ${((i * rnd.length + j) % boards) + 1}`,
+          p1_id: pair[0],
+          p2_id: pair[1],
+          best_of_sets: 1,
+          best_of_legs: 3
         }))
       );
       await supabase.from('matches').insert(matches);
@@ -147,6 +221,8 @@ async function renderDashboard() {
     }
   };
 }
+
+
 
 // --------------------------------------------------
 // 3) SCORER mit Sets & Legs & Turn Toggle
@@ -173,20 +249,42 @@ async function renderScorer() {
     return;
   }
 
-  // Match-Auswahl
-  if (!currentMatch) {
-    const matches = await fetchOpenMatches(currentBoard);
-    if (!matches.length) { app.innerHTML = `<p class="text-center mt-8">Board ${currentBoard} fertig</p>`; return; }
-    app.innerHTML = `<h3 class="text-xl text-center mt-6">Matches auf ${currentBoard}</h3><div id="matchList" class="max-w-md mx-auto mt-4 space-y-2"></div>`;
-    matches.forEach(m => {
-      const b = document.createElement('button');
-      b.className = 'btn flex justify-between';
-      b.textContent = `${m.p1.name} vs ${m.p2.name}`;
-      b.onclick = () => startMatch(m);
-      document.getElementById('matchList').appendChild(b);
-    });
-    return;
-  }
+// 2) Match-Auswahl
+if (!currentMatch) {
+  // 1) Matches aus der DB laden
+  const matches = await fetchOpenMatches(currentBoard);
+  console.log('matches raw:', matches);
+
+
+  // 2) Container mit Überschrift und leeren Platzhalter setzen
+  app.innerHTML = `
+    <h3 class="text-xl text-center mt-6">Matches auf ${currentBoard}</h3>
+    <div id="matchList" class="max-w-md mx-auto mt-4 space-y-2"></div>
+  `;
+
+  // 3) Container holen und alle bisherigen Kinder entfernen
+  const matchListEl = document.getElementById('matchList');
+  matchListEl.replaceChildren();  // <— löscht wirklich alles
+
+  // 4) Duplikate anhand der Match-ID herausfiltern
+  const seen = new Set();
+  const uniqueMatches = matches.filter(m => {
+    if (seen.has(m.id)) return false;
+    seen.add(m.id);
+    return true;
+  });
+
+  // 5) Buttons für jeden eindeutigen Match erzeugen
+  uniqueMatches.forEach(m => {
+    const btn = document.createElement('button');
+    btn.className = 'btn flex justify-between';
+    btn.textContent = `${m.p1.name} vs ${m.p2.name}`;
+    btn.onclick = () => startMatch(m);
+    matchListEl.appendChild(btn);
+  });
+
+  return;
+}
 
   // Live-Scorer
   renderLiveScorer(app);
@@ -227,13 +325,49 @@ function renderLiveScorer(app) {
       <div class="flex justify-center gap-2">
         <button id="legWon" class="btn bg-green-600 text-white hidden">Leg gewonnen</button>
         <button id="setWon" class="btn bg-blue-600 text-white hidden">Set gewonnen</button>
+        <!-- Roten Rückgängig-Button einfügen: -->
+        <button id="undoBtn" class="bg-red-500 hover:bg-red-600 text-white rounded-full py-1 px-3 transition ml-2">
+          ← Rückgängig
+        </button>
+        
       </div>
     </div>`;
+
+      // Rückgängig-Handler: letzten Wurf entfernen
+  document.getElementById('undoBtn').onclick = () => {
+    const last = currentLeg.scores.pop();
+    if (!last) return;
+
+    // Wer war dran?
+    currentPlayer = last.playerId === currentMatch.p1_id ? 'p1' : 'p2';
+
+    // Restscore neu setzen
+    if (currentPlayer === 'p1') {
+      remainingP1 = currentLeg.currentScore(currentMatch.p1_id);
+      document.getElementById('remP1').textContent = remainingP1;
+    } else {
+      remainingP2 = currentLeg.currentScore(currentMatch.p2_id);
+      document.getElementById('remP2').textContent = remainingP2;
+    }
+
+    // Buttons verbergen
+    document.getElementById('legWon').classList.add('hidden');
+    document.getElementById('setWon').classList.add('hidden');
+
+    // Scorer-Ansicht aktualisieren
+    renderLiveScorer(app);
+  };
+
 
   const form = document.getElementById('throwForm');
   form.onsubmit = e => {
     e.preventDefault();
     const sc = parseInt(form.score.value,10)||0;
+    if (sc > 180) {
+  alert('😡 Maximal 180 Punkte erlaubt!');
+  return;
+}
+
     form.reset();
     const prev = isP1Turn?remainingP1:remainingP2;
     const rem = prev - sc;
@@ -309,13 +443,22 @@ async function fetchBoardsForToday(){
 }
 
 async function fetchOpenMatches(board){
-  const today=new Date().toISOString().slice(0,10);
-  const { data: gds, error: gdErr } = await supabase.from('gamedays').select('id').eq('date',today);
-  if(gdErr){ console.error(gdErr); return []; }
-  const ids = (gds||[]).map(g=>g.id);
-  const { data: matches, error: mErr } = await supabase.from('matches').select('*, p1:p1_id(name), p2:p2_id(name)').eq('board',board).is('finished_at',null).in('gameday_id',ids);
-  if(mErr){ console.error(mErr); return []; }
-  return matches||[];
+  // Lese die Spieltags-ID aus localStorage
+  const gamedayId = localStorage.getItem('bullseyer_gameday');
+  if (!gamedayId) return [];
+
+  // Hole nur die offenen Matches für genau diesen Spieltag & dieses Board
+  const { data: matches, error } = await supabase
+    .from('matches')
+    .select('*, p1:p1_id(name), p2:p2_id(name)')
+    .eq('board', board)
+    .eq('gameday_id', gamedayId)
+    .is('finished_at', null);
+  if (error) {
+    console.error('Error fetching open matches:', error);
+    return [];
+  }
+  return matches;
 }
 
 function renderStats(){
