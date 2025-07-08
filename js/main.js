@@ -285,38 +285,37 @@ function renderLiveScorer(app) {
   const isP1Turn = currentPlayer === 'p1';
 
   app.innerHTML = `
-    <div class="max-w-md mx-auto mt-6 space-y-4">
-      <h2 class="text-xl text-center">${p1} vs ${p2}</h2>
-      <div class="flex justify-center gap-4">
-        <span>Set ${currentSetNo}/${bestSet}</span>
-        <span>Leg ${currentLegNo}/${bestLeg}</span>
+  <div class="max-w-md mx-auto mt-6 space-y-4">
+    <h2 class="text-xl text-center">${p1} vs ${p2}</h2>
+    <div class="flex justify-center gap-4">
+      <span>Set ${currentSetNo}/${bestSet}</span>
+      <span>Leg ${currentLegNo}/${bestLeg}</span>
+    </div>
+    <div class="flex justify-between items-center mt-4 text-lg">
+      <div class="flex flex-col items-center w-1/3">
+        <span class="font-semibold mb-1">${p1}</span>
+        <span id="legsP1" class="text-sm mb-1">Sets: ${setsWon.p1}</span>
+        <strong id="remP1" class="${isP1Turn ? 'text-4xl' : 'text-2xl'}">${remainingP1}</strong>
       </div>
-      <div class="grid grid-cols-2 gap-8 mt-4 text-lg">
-        <div class="text-left">
-          <div class="flex items-center gap-1">
-            <span id="legsP1" class="font-semibold">${setsWon.p1}</span>
-            <span>${p1}</span>
-          </div>
-          <strong id="remP1">${remainingP1}</strong>
-        </div>
-        <div class="text-right">
-          <strong id="remP2">${remainingP2}</strong><br>
-          <div class="flex items-center gap-1 justify-end">
-            <span>${p2}</span>
-            <span id="legsP2" class="font-semibold">${setsWon.p2}</span>
-          </div>
-        </div>
+      <div class="flex flex-col items-center w-1/3">
+        <!-- Leer für Abstand -->
       </div>
-      <form id="throwForm" class="flex justify-center gap-2">
-        <input type="number" name="score" class="input w-32 text-lg text-center" placeholder="Score" required />
-        <button class="btn">OK</button>
-      </form>
-      <div class="flex justify-center gap-2">
-        <button id="legWon" class="btn bg-green-600 text-white hidden">Leg gewonnen</button>
-        <button id="setWon" class="btn bg-blue-600 text-white hidden">Set gewonnen</button>
-        <button id="undoBtn" class="bg-red-500 hover:bg-red-600 text-white rounded-full py-1 px-3 transition ml-2">← Rückgängig</button>
+      <div class="flex flex-col items-center w-1/3">
+        <span class="font-semibold mb-1">${p2}</span>
+        <span id="legsP2" class="text-sm mb-1">Sets: ${setsWon.p2}</span>
+        <strong id="remP2" class="${!isP1Turn ? 'text-4xl' : 'text-2xl'}">${remainingP2}</strong>
       </div>
-    </div>`;
+    </div>
+    <form id="throwForm" class="flex justify-center gap-2">
+      <input type="number" name="score" class="input w-32 text-lg text-center" placeholder="Score" required />
+      <button class="btn">OK</button>
+    </form>
+    <div class="flex justify-center gap-2">
+      <button id="legWon" class="btn bg-green-600 text-white hidden">Leg gewonnen</button>
+      <button id="setWon" class="btn bg-blue-600 text-white hidden">Set gewonnen</button>
+      <button id="undoBtn" class="bg-red-500 hover:bg-red-600 text-white rounded-full py-1 px-3 transition ml-2">← Rückgängig</button>
+    </div>
+  </div>`;
 
   // Rückgängig-Handler: letzten Wurf entfernen
   document.getElementById('undoBtn').onclick = () => {
