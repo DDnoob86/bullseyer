@@ -310,6 +310,8 @@ let setsWon = { p1: 0, p2: 0 };
 let remainingP1 = 501;
 let remainingP2 = 501;
 let currentPlayer = 'p1';
+let bullfinish = false;
+let currentLegSaved = false; // NEU: Flag, ob das aktuelle Leg schon gespeichert wurde
 
 async function renderScorer() {
   const app = document.getElementById('app');
@@ -407,6 +409,28 @@ function startMatch(m) {
 function resetLeg() {
   remainingP1 = remainingP2 = 501;
   currentLeg = new Leg({ legId: crypto.randomUUID(), doubleIn: false, doubleOut: true });
+  bullfinish = false;
+  currentLegSaved = false;
+  // Leg sofort mit Minimaldaten in DB anlegen, damit Foreign Key für throws existiert
+  (async () => {
+    try {
+      const { error } = await supabase.from('legs').insert({
+        id: currentLeg.id,
+        match_id: currentMatch?.id || null,
+        set_no: currentSetNo || 1,
+        leg_no: currentLegNo || 1,
+        starter: currentMatch?.p1_id || null,
+        start_score: 501
+      });
+      if (error && !String(error.message).includes('duplicate key')) {
+        console.error('Fehler beim Anlegen des Legs (resetLeg):', error);
+      } else {
+        currentLegSaved = true;
+      }
+    } catch (err) {
+      console.error('Fehler beim Anlegen des Legs (resetLeg):', err);
+    }
+  })();
 }
 
 function renderLiveScorer(app) {
@@ -416,6 +440,14 @@ function renderLiveScorer(app) {
         bestSet = currentMatch.best_of_sets;
   const isP1Turn = currentPlayer === 'p1';
 
+  let bullBtnHtml = '';
+  // Bullfinish- und Kein Bullfinish-Button anzeigen, wenn einer der Spieler 0 Rest hat (Leg gewonnen)
+  if (remainingP1 === 0 || remainingP2 === 0) {
+    bullBtnHtml = `
+      <button id="bullfinishBtn" class="rounded-full bg-red-600 text-white px-4 py-2 text-lg font-bold shadow-lg animate-pulse" type="button">Bullfinish</button>
+      <button id="noBullfinishBtn" class="rounded-full bg-gray-400 text-white px-4 py-2 text-lg font-bold shadow-lg ml-2" type="button">Kein Bullfinish</button>
+    `;
+  }
   app.innerHTML = `
   <div class="max-w-md mx-auto mt-6 space-y-4">
     <div class="flex justify-between items-center mb-2">
@@ -445,12 +477,41 @@ function renderLiveScorer(app) {
       <input type="number" name="score" class="input w-32 text-lg text-center" placeholder="Score" required />
       <button class="btn">OK</button>
     </form>
-    <div class="flex justify-center gap-2">
+    <div class="flex justify-center gap-2 mt-2">
       <button id="legWon" class="btn bg-green-600 text-white hidden">Leg gewonnen</button>
       <button id="setWon" class="btn bg-blue-600 text-white hidden">Set gewonnen</button>
       <button id="undoBtn" class="bg-red-500 hover:bg-red-600 text-white rounded-full py-1 px-3 transition ml-2">← Rückgängig</button>
+      ${bullBtnHtml}
     </div>
   </div>`;
+
+  // Hilfsfunktion für Leg/Set-Wechsel (vor den Button-Handlern deklarieren!)
+  function nextLegOrSet() {
+    if (setsWon.p1 > bestLeg / 2 || setsWon.p2 > bestLeg / 2 || currentLegNo >= bestLeg) {
+      document.getElementById('setWon').classList.remove('hidden');
+    } else {
+      currentLegNo++;
+      currentPlayer = 'p1';
+      resetLeg();
+      renderScorer();
+    }
+  }
+
+  // Bullfinish- und Kein Bullfinish-Button Handler
+  if (document.getElementById('bullfinishBtn')) {
+    document.getElementById('bullfinishBtn').onclick = async () => {
+      bullfinish = true;
+      await saveLeg(currentSetNo, currentLegNo);
+      nextLegOrSet();
+    };
+  }
+  if (document.getElementById('noBullfinishBtn')) {
+    document.getElementById('noBullfinishBtn').onclick = async () => {
+      bullfinish = false;
+      await saveLeg(currentSetNo, currentLegNo);
+      nextLegOrSet();
+    };
+  }
 
   // Zurück zur Matchauswahl
   document.getElementById('backToMatchSelect').onclick = () => {
@@ -474,7 +535,7 @@ function renderLiveScorer(app) {
   };
 
   // Score eintragen
-  document.getElementById('throwForm').onsubmit = e => {
+  document.getElementById('throwForm').onsubmit = async e => {
     e.preventDefault();
     const sc = parseInt(e.target.score.value, 10);
     if (sc > 180) { alert('😡 Maximal 180 Punkte erlaubt!'); return; }
@@ -486,8 +547,53 @@ function renderLiveScorer(app) {
     if (isP1Turn) { remainingP1 = rem; document.getElementById('remP1').textContent = rem; }
     else          { remainingP2 = rem; document.getElementById('remP2').textContent = rem; }
     currentLeg.addThrow({ playerId: isP1Turn ? currentMatch.p1_id : currentMatch.p2_id, darts: [sc] });
+
+    // NEU: Leg vor dem ersten Wurf speichern, falls noch nicht geschehen
+    if (!currentLegSaved) {
+      try {
+        const { error: legErr } = await supabase.from('legs').insert({
+          id: currentLeg.id,
+          match_id: currentMatch.id,
+          set_no: currentSetNo,
+          leg_no: currentLegNo,
+          starter: currentMatch.p1_id,
+          start_score: 501,
+          // finish_darts, duration_s, winner_id, bullfinish werden am Leg-Ende gesetzt
+        });
+        if (legErr) {
+          console.error('Fehler beim Anlegen des Legs:', legErr);
+          alert('Fehler beim Anlegen des Legs: ' + (legErr.message || legErr.details || legErr));
+          return;
+        }
+        currentLegSaved = true;
+      } catch (err) {
+        console.error('Fehler beim Anlegen des Legs:', err);
+        alert('Fehler beim Anlegen des Legs: ' + err.message);
+        return;
+      }
+    }
+
+    // Wurf in Tabelle throws speichern
+    try {
+      const throwObj = {
+        id: crypto.randomUUID(),
+        leg_id: currentLeg.id,
+        player_id: isP1Turn ? currentMatch.p1_id : currentMatch.p2_id,
+        score: sc,
+        order_no: currentLeg.scores.length, // 1-basiert, da nach addThrow
+        created_at: new Date().toISOString()
+      };
+      const { error: throwErr } = await supabase.from('throws').insert(throwObj);
+      if (throwErr) {
+        console.error('Fehler beim Speichern des Wurfs:', throwErr);
+        alert('Fehler beim Speichern des Wurfs: ' + (throwErr.message || throwErr.details || throwErr));
+      }
+    } catch (err) {
+      console.error('Fehler beim Eintragen des Wurfs:', err);
+    }
+
     if (rem === 0) {
-      document.getElementById('legWon').classList.remove('hidden');
+      renderLiveScorer(app); // Neu rendern, damit Leg-Gewonnen- und Bullfinish-Button erscheinen
     } else {
       currentPlayer = isP1Turn ? 'p2' : 'p1';
       renderLiveScorer(app);
@@ -545,8 +651,7 @@ function renderLiveScorer(app) {
 // Datenbank-Helper
 // --------------------------------------------------
 async function saveLeg(setNo, legNo) {
-  await supabase.from('legs').insert({
-    id: currentLeg.id,
+  const { error } = await supabase.from('legs').update({
     match_id: currentMatch.id,
     set_no: setNo,
     leg_no: legNo,
@@ -554,8 +659,13 @@ async function saveLeg(setNo, legNo) {
     start_score: 501,
     finish_darts: currentLeg.throwCount,
     duration_s: currentLeg.durationSeconds,
-    winner_id: remainingP1 === 0 ? currentMatch.p1_id : currentMatch.p2_id
-  });
+    winner_id: remainingP1 === 0 ? currentMatch.p1_id : currentMatch.p2_id,
+    bullfinish: !!bullfinish
+  }).eq('id', currentLeg.id);
+  if (error) {
+    console.error('Fehler beim Speichern des Legs:', error);
+    alert('Fehler beim Speichern des Legs: ' + (error.message || error.details || error));
+  }
 }
 
 async function fetchBoardsForToday() {
@@ -587,5 +697,48 @@ async function fetchOpenMatches(board, withDate = false) {
 }
 
 function renderStats() {
-  document.getElementById('app').innerHTML = '<p class="text-center mt-8">Statistik folgt…</p>';
+  // NEU: Statistik aus Tabelle legs und throws
+  document.getElementById('app').innerHTML = '<p class="text-center mt-8">Lade Statistik…</p>';
+  loadStats();
+}
+
+async function loadStats() {
+  // Highscore (Wurf >= 101), Highfinish (180), Shortleg (<= 18 Darts)
+  let html = '<h2 class="text-2xl text-center mt-8">Statistik</h2>';
+  // Highscores
+  const { data: throws, error: throwsErr } = await supabase
+    .from('throws')
+    .select('player_id, score')
+    .gte('score', 101);
+  if (throwsErr) {
+    document.getElementById('app').innerHTML = '<p class="text-red-600 text-center mt-8">Fehler beim Laden der Highscores: ' + throwsErr.message + '</p>';
+    return;
+  }
+  // Highfinishes
+  const { data: finishes, error: finishErr } = await supabase
+    .from('throws')
+    .select('player_id, score')
+    .eq('score', 180);
+  if (finishErr) {
+    document.getElementById('app').innerHTML = '<p class="text-red-600 text-center mt-8">Fehler beim Laden der Highfinishes: ' + finishErr.message + '</p>';
+    return;
+  }
+  // Shortlegs (Legs mit <= 18 Darts)
+  const { data: shortlegs, error: shortErr } = await supabase
+    .from('legs')
+    .select('winner_id, finish_darts')
+    .lte('finish_darts', 18);
+  if (shortErr) {
+    document.getElementById('app').innerHTML = '<p class="text-red-600 text-center mt-8">Fehler beim Laden der Shortlegs: ' + shortErr.message + '</p>';
+    return;
+  }
+  html += `<div class="mt-6">
+    <h3 class="text-lg mb-2">Highscores (Wurf ≥ 101)</h3>
+    <p>${throws.length} Highscores</p>
+    <h3 class="text-lg mt-4 mb-2">Highfinishes (180)</h3>
+    <p>${finishes.length} Highfinishes</p>
+    <h3 class="text-lg mt-4 mb-2">Shortlegs (≤ 18 Darts)</h3>
+    <p>${shortlegs.length} Shortlegs</p>
+  </div>`;
+  document.getElementById('app').innerHTML = html;
 }
