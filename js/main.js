@@ -106,7 +106,13 @@ async function renderDashboard() {
     .order('gameday_id', { ascending: false });
   if (!openErr && openMatches && openMatches.length) {
     document.getElementById('openMatches').innerHTML = `
-      <h3 class="text-lg mb-2">Offene Spiele</h3>
+      <div class="flex items-center justify-between mb-2">
+        <h3 class="text-lg">Offene Spiele</h3>
+        <button id="gotoScorerBtn" class="btn btn-sm bg-blue-600 text-white flex items-center gap-1">
+          Zu den Matches
+          <span aria-hidden="true">&#8594;</span>
+        </button>
+      </div>
       <ul class="space-y-1">
         ${openMatches.map(m => `<li class="border rounded p-2 flex justify-between items-center">
           <span>${m.p1?.name || '?'} vs ${m.p2?.name || '?'}<br><span class="text-xs text-gray-500">${m.gameday?.date || ''}</span></span>
@@ -114,6 +120,10 @@ async function renderDashboard() {
         </li>`).join('')}
       </ul>
     `;
+    // Button-Handler: Wechselt zur Scorer-Seite
+    document.getElementById('gotoScorerBtn').onclick = () => {
+      window.location.hash = '#/scorer';
+    };
   }
 
   // 2) Spieler aus Supabase holen
@@ -126,7 +136,25 @@ async function renderDashboard() {
     return;
   }
 
-  // 3) Formular anzeigen
+  // 3) Offene Spiele HTML vorbereiten
+  let openMatchesHtml = '';
+  openMatchesHtml = `
+    <div class="flex items-center justify-between mb-2">
+      <h3 class="text-lg">Offene Spiele</h3>
+      <button id="gotoScorerBtn" class="btn btn-sm bg-blue-600 text-white flex items-center gap-1">
+        Zu den Matches
+        <span aria-hidden="true">&#8594;</span>
+      </button>
+    </div>
+    <ul class="space-y-1">
+      ${(openMatches && openMatches.length) ? openMatches.map(m => `<li class="border rounded p-2 flex justify-between items-center">
+        <span>${m.p1?.name || '?'} vs ${m.p2?.name || '?'}<br><span class="text-xs text-gray-500">${m.gameday?.date || ''}</span></span>
+        <span class="text-xs">Board ${m.board}</span>
+      </li>`).join('') : '<li class="text-center text-gray-400 py-2">Keine offenen Spiele</li>'}
+    </ul>
+  `;
+
+  // 4) Formular anzeigen (offene Spiele werden jetzt UNTER dem Button angezeigt)
   app.innerHTML = `
     <div class="relative">
       <button id="logoutBtn3" class="absolute top-4 right-4">Logout</button>
@@ -151,7 +179,14 @@ async function renderDashboard() {
         Spieltag starten
       </button>
     </form>
+    <div id="openMatches" class="mt-6 max-w-md mx-auto">${openMatchesHtml}</div>
   `;
+
+  // Button-Handler: Wechselt zur Scorer-Seite (nach dem Render!)
+  if (openMatchesHtml) {
+    const btn = document.getElementById('gotoScorerBtn');
+    if (btn) btn.onclick = () => { window.location.hash = '#/scorer'; };
+  }
 
   // Logout im Formular
   document.getElementById('logoutBtn3').onclick = async () => {
@@ -302,9 +337,17 @@ async function renderScorer() {
           </button>
         `).join('')}
       </div>
+      <div class="flex justify-between items-center mb-4">
+        <button id="backToDashboard" class="btn btn-sm bg-gray-400 hover:bg-gray-500 text-white">← Zurück</button>
+      </div>
       <div id="scorerContent"></div>
     </div>
   `;
+
+  // Zurück-Button Handler
+  document.getElementById('backToDashboard').onclick = () => {
+    window.location.hash = '#/dashboard';
+  };
 
   // Board-Wechsel-Handler
   app.querySelectorAll('[data-board]').forEach(btn => btn.onclick = () => {
@@ -375,7 +418,10 @@ function renderLiveScorer(app) {
 
   app.innerHTML = `
   <div class="max-w-md mx-auto mt-6 space-y-4">
-    <h2 class="text-xl text-center">${p1} vs ${p2}</h2>
+    <div class="flex justify-between items-center mb-2">
+      <button id="backToMatchSelect" class="btn btn-sm bg-gray-400 hover:bg-gray-500 text-white">← Zurück zur Auswahl</button>
+      <h2 class="text-xl text-center flex-1">${p1} vs ${p2}</h2>
+    </div>
     <div class="flex justify-center gap-4">
       <span>Set ${currentSetNo}/${bestSet}</span>
       <span>Leg ${currentLegNo}/${bestLeg}</span>
@@ -405,6 +451,12 @@ function renderLiveScorer(app) {
       <button id="undoBtn" class="bg-red-500 hover:bg-red-600 text-white rounded-full py-1 px-3 transition ml-2">← Rückgängig</button>
     </div>
   </div>`;
+
+  // Zurück zur Matchauswahl
+  document.getElementById('backToMatchSelect').onclick = () => {
+    currentMatch = null;
+    renderScorer();
+  };
 
   // Rückgängig-Handler: letzten Wurf entfernen
   document.getElementById('undoBtn').onclick = () => {
