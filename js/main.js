@@ -390,7 +390,7 @@ function renderLiveScorer(app) {
       resetLeg();
       renderScorer();
     }
-  };
+  ;
 }
 
 // --------------------------------------------------
