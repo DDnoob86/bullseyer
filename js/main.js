@@ -218,11 +218,22 @@ async function renderDashboard() {
   // 5) Form-Submit → Spieltag & Matches anlegen
   document.getElementById('cfgForm').onsubmit = async e => {
     e.preventDefault();
-    console.log('Anzahl ausgewählter Spieler:', selectedPlayers.size, [...selectedPlayers]); // <--- Debug-Ausgabe
+    const submitBtn = e.target.querySelector('button[type="submit"], button:not([type])');
+    const defaultBtnText = submitBtn ? submitBtn.textContent : '';
+
     const { boSets, boLegs, doubleOut } = e.target.elements;
 
     if (selectedPlayers.size < 2) {
-      alert('Mindestens zwei Spieler auswählen');
+      if (submitBtn) {
+        submitBtn.textContent = 'Mindestens zwei Spieler wählen!';
+        submitBtn.classList.add('bg-red-600');
+        setTimeout(() => {
+          submitBtn.textContent = defaultBtnText;
+          submitBtn.classList.remove('bg-red-600');
+        }, 3000);
+      } else {
+        alert('Mindestens zwei Spieler auswählen');
+      }
       return;
     }
 
@@ -230,7 +241,16 @@ async function renderDashboard() {
     const boL = parseInt(boLegs.value, 10);
 
     if (boS % 2 === 0 || boL % 2 === 0) {
-      alert('Best‑of muss ungerade sein (1,3,5…)');
+      if (submitBtn) {
+        submitBtn.textContent = 'Best-of muss ungerade sein!';
+        submitBtn.classList.add('bg-red-600');
+        setTimeout(() => {
+          submitBtn.textContent = defaultBtnText;
+          submitBtn.classList.remove('bg-red-600');
+        }, 3000);
+      } else {
+        alert('Best‑of muss ungerade sein (1,3,5…)');
+      }
       return;
     }
 
@@ -241,7 +261,16 @@ async function renderDashboard() {
       .select()
       .single();
     if (gdErr) { 
-      alert(`Fehler beim Anlegen der Matches:\n${gdErr.message}`);
+      if (submitBtn) {
+        submitBtn.textContent = 'Fehler beim Anlegen des Spieltags';
+        submitBtn.classList.add('bg-red-600');
+        setTimeout(() => {
+          submitBtn.textContent = defaultBtnText;
+          submitBtn.classList.remove('bg-red-600');
+        }, 4000);
+      } else {
+        alert(`Fehler beim Anlegen der Matches:\n${gdErr.message}`);
+      }
       return;
     }
     localStorage.setItem('bullseyer_gameday', gd.id);
@@ -253,43 +282,82 @@ async function renderDashboard() {
     // Filtere ungültige Paarungen raus (z.B. [id, null] oder [null, id])
     const validPairings = pairings.filter(([p1, p2]) => p1 && p2);
 
-    // NEU: Prüfe, ob für den Tag bereits offene Paarungen existieren
-    const today = new Date().toISOString().slice(0, 10);
-    const { data: openToday, error: openTodayErr } = await supabase
+    // NEU: Prüfe, ob für den Tag bereits Paarungen existieren (egal ob offen oder beendet)
+    const { data: matchesToday, error: matchesTodayErr } = await supabase
       .from('matches')
-      .select('p1_id, p2_id, gameday_id, finished_at')
-      .in('gameday_id', [gd.id])
-      .is('finished_at', null);
-    if (openTodayErr) {
-      alert('Fehler beim Prüfen auf offene Paarungen: ' + openTodayErr.message);
+      .select('p1_id, p2_id, gameday_id')
+      .in('gameday_id', [gd.id]);
+    if (matchesTodayErr) {
+      if (submitBtn) {
+        submitBtn.textContent = 'Fehler beim Prüfen der Paarungen';
+        submitBtn.classList.add('bg-red-600');
+        setTimeout(() => {
+          submitBtn.textContent = defaultBtnText;
+          submitBtn.classList.remove('bg-red-600');
+        }, 4000);
+      } else {
+        alert('Fehler beim Prüfen auf bestehende Paarungen: ' + matchesTodayErr.message);
+      }
       return;
     }
     // Vergleiche beide Richtungen (p1-p2 und p2-p1)
-    const alreadyOpen = validPairings.filter(([p1, p2]) =>
-      openToday.some(m => (m.p1_id === p1 && m.p2_id === p2) || (m.p1_id === p2 && m.p2_id === p1))
+    const alreadyExists = validPairings.filter(([p1, p2]) =>
+      matchesToday.some(m => (m.p1_id === p1 && m.p2_id === p2) || (m.p1_id === p2 && m.p2_id === p1))
     );
-    if (alreadyOpen.length) {
-      alert('Für folgende Paarungen existiert heute bereits ein offenes Match:\n' +
-        alreadyOpen.map(([p1, p2]) => `${players.find(x=>x.id===p1)?.name || p1} vs ${players.find(x=>x.id===p2)?.name || p2}`).join('\n') +
-        '\nBitte beende diese Spiele zuerst!');
+    if (alreadyExists.length) {
+      if (submitBtn) {
+        submitBtn.textContent = 'Spielerpaarungen schon angelegt!';
+        submitBtn.classList.add('bg-red-600');
+        setTimeout(() => {
+          submitBtn.textContent = defaultBtnText;
+          submitBtn.classList.remove('bg-red-600');
+        }, 5000);
+      } else {
+        alert('Für folgende Paarungen existiert heute bereits ein Match (offen oder beendet):\n' +
+          alreadyExists.map(([p1, p2]) => `${players.find(x=>x.id===p1)?.name || p1} vs ${players.find(x=>x.id===p2)?.name || p2}`).join('\n') +
+          '\nJede Paarung darf pro Spieltag nur einmal existieren!');
+      }
       return;
     }
 
     const { error: matchErr } = await supabase
       .from('matches')
       .insert(
-        validPairings.map(([p1, p2], i) => ({
-          gameday_id: gd.id,
-          p1_id: p1,
-          p2_id: p2,
-          best_of_sets: boS,
-          best_of_legs: boL,
-          double_out: doubleOut.checked,
-          board: 1 // <-- Alle auf Board 1!
-        }))
+        validPairings.map(([p1, p2], i) => {
+          const [a, b] = [p1, p2].sort(); // IDs sortieren für pair_key
+          return {
+            gameday_id: gd.id,
+            p1_id: p1,
+            p2_id: p2,
+            best_of_sets: boS,
+            best_of_legs: boL,
+            double_out: doubleOut.checked,
+            board: 1, // <-- Alle auf Board 1!
+            pair_key: `${a}:${b}` // NEU: Eindeutige Paarung pro Spieltag
+          };
+        })
       );
     if (matchErr) {
-      alert(`Fehler beim Anlegen der Matches:\n${matchErr.message}`);
+      if (submitBtn) {
+        // Prüfe auf Unique-Fehler (doppelte Paarung)
+        if (matchErr.message && matchErr.message.includes('duplicate key value') && matchErr.message.includes('pair_key')) {
+          submitBtn.textContent = 'Spielerpaarungen schon angelegt!';
+          submitBtn.classList.add('bg-red-600', 'hover:bg-red-700');
+          setTimeout(() => {
+            submitBtn.textContent = defaultBtnText;
+            submitBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
+          }, 5000);
+        } else {
+          submitBtn.textContent = 'Fehler beim Anlegen der Matches!';
+          submitBtn.classList.add('bg-red-600', 'hover:bg-red-700');
+          setTimeout(() => {
+            submitBtn.textContent = defaultBtnText;
+            submitBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
+          }, 4000);
+        }
+      } else {
+        alert(`Fehler beim Anlegen der Matches:\n${matchErr.message}`);
+      }
       return;
     }
 
@@ -383,17 +451,28 @@ async function renderScorer() {
   }
   scorerContent.innerHTML = matches.map(m =>
     `<button class="btn w-full mb-2 flex flex-col items-start" data-mid="${m.id}">
-      <span>${m.p1.name} vs ${m.p2.name}</span>
+      <span>${m.p1.name}&nbsp;vs&nbsp;${m.p2.name}</span>
       <span class="text-xs text-gray-500">${m.gameday?.date || ''}</span>
     </button>`
   ).join('');
-  scorerContent.querySelectorAll('[data-mid]').forEach(btn =>
-    btn.onclick = () => {
-      const m = matches.find(x => String(x.id).trim() === String(btn.dataset.mid).trim());
-      if (m) startMatch(m);
-      else alert('Match nicht gefunden!');
-    }
-  );
+  // Event-Delegation für Touch/Click: Funktioniert jetzt auf allen Geräten (iPad/iOS Fix)
+  let matchSelectLock = false;
+  function handleMatchSelect(e) {
+    if (matchSelectLock) return;
+    const btn = e.target.closest('button[data-mid]');
+    if (!btn) return;
+    const m = matches.find(x => String(x.id).trim() === String(btn.dataset.mid).trim());
+    if (m) startMatch(m);
+    else alert('Match nicht gefunden!');
+    matchSelectLock = true;
+    setTimeout(() => { matchSelectLock = false; }, 300);
+  }
+  scorerContent.addEventListener('pointerdown', handleMatchSelect);
+  scorerContent.addEventListener('click', function(e) {
+    // Doppelauslösung verhindern
+    if (matchSelectLock) return;
+    handleMatchSelect(e);
+  });
 }
 
 function startMatch(m) {
@@ -477,6 +556,20 @@ function renderLiveScorer(app) {
       <input type="number" name="score" class="input w-32 text-lg text-center" placeholder="Score" required />
       <button class="btn">OK</button>
     </form>
+    <div class="grid grid-cols-4 gap-3 justify-center max-w-xs mx-auto mt-2" id="quickScores">
+      <button type="button" class="btn bg-gray-200 hover:bg-blue-200 text-2xl py-4" data-score="26">26</button>
+      <button type="button" class="btn bg-gray-200 hover:bg-blue-200 text-2xl py-4" data-score="41">41</button>
+      <button type="button" class="btn bg-gray-200 hover:bg-blue-200 text-2xl py-4" data-score="45">45</button>
+      <button type="button" class="btn bg-gray-200 hover:bg-blue-200 text-2xl py-4" data-score="60">60</button>
+      <button type="button" class="btn bg-gray-200 hover:bg-blue-200 text-2xl py-4" data-score="81">81</button>
+      <button type="button" class="btn bg-gray-200 hover:bg-blue-200 text-2xl py-4" data-score="83">83</button>
+      <button type="button" class="btn bg-gray-200 hover:bg-blue-200 text-2xl py-4" data-score="85">85</button>
+      <button type="button" class="btn bg-gray-200 hover:bg-blue-200 text-2xl py-4" data-score="95">95</button>
+      <button type="button" class="btn bg-gray-200 hover:bg-blue-200 text-2xl py-4" data-score="100">100</button>
+      <button type="button" class="btn bg-gray-200 hover:bg-blue-200 text-2xl py-4" data-score="121">121</button>
+      <button type="button" class="btn bg-gray-200 hover:bg-blue-200 text-2xl py-4" data-score="140">140</button>
+      <button type="button" class="btn bg-gray-200 hover:bg-blue-200 text-2xl py-4" data-score="180">180</button>
+    </div>
     <div class="flex justify-center gap-2 mt-2">
       <button id="legWon" class="btn bg-green-600 text-white hidden">Leg gewonnen</button>
       <button id="setWon" class="btn bg-blue-600 text-white hidden">Set gewonnen</button>
@@ -639,6 +732,24 @@ function renderLiveScorer(app) {
       renderScorer();
     }
   };
+
+  // Quick-Score-Buttons: Wert ins Eingabefeld übernehmen
+  setTimeout(() => {
+    const scoreInput = document.querySelector('input[name="score"]');
+    const throwForm = document.getElementById('throwForm');
+    if (scoreInput) scoreInput.focus();
+    document.querySelectorAll('#quickScores button[data-score]').forEach(btn => {
+      btn.onclick = () => {
+        if (scoreInput) {
+          scoreInput.value = btn.dataset.score;
+          scoreInput.focus();
+        }
+        if (throwForm) {
+          throwForm.requestSubmit();
+        }
+      };
+    });
+  }, 0);
 
   // Setze den Fokus nach jedem Render auf das Score-Eingabefeld
   setTimeout(() => {
