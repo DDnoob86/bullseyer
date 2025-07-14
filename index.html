@@ -2,29 +2,30 @@
 <html lang="de">
   <head>
     <!-- Tailwind Utility-Klassen aus dem CDN -->
-<script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
 
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Bullseyer</title>
 
-    <!-- Tailwind → wird offline gecacht (service‑worker) -->
+    <!-- Tailwind → wird offline gecacht (service‑worker) -->
     <link rel="stylesheet" href="https://cdn.tailwindcss.com" />
 
-    <!-- PWA Meta‑Daten -->
+    <!-- PWA Meta‑Daten -->
     <link rel="manifest" href="./manifest.webmanifest" />
     <meta name="theme-color" content="#ADD8E6" />
   </head>
   <body class="bg-gray-50 text-gray-900 min-h-screen flex flex-col">
-    <!-- Header mit Logo / Schriftzug -->
-    <header class="p-4 text-center text-2xl font-bold select-none">
+    <!-- Header mit Logo / Schriftzug - wird dynamisch gesteuert -->
+    <header id="mainHeader" class="p-4 text-center text-2xl font-bold select-none">
       <img src="./assets/logo.svg" alt="Bullseyer" class="inline h-40 mr-2" />Bullseyer
     </header>
 
-    <!-- SPA Root -->
+    <!-- SPA Root -->
     <main id="app" class="flex-1 p-4"></main>
 
     <!-- Haupt‑Bundle -->
-    <script type="module" src="./js/main.js"></script>
+    <!-- Stelle sicher, dass der Pfad zu main.js korrekt ist -->
+    <script type="module" src="js/main.js"></script>
   </body>
 </html>

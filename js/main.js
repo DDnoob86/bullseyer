@@ -3,6 +3,7 @@ import { supabase } from './supabase.js';
 import { generateRoundRobin } from './pairing.js';
 import { Leg } from './scorer.js';
 import { exportGameDay } from './export.js';
+import { renderLiveScorer, resetLeg } from './livescoring.js';
 
 const DEV = true;
 
@@ -13,7 +14,7 @@ supabase.auth.onAuthStateChange((event, session) => {
 });
 
 // -----------------------------
-// Mini-Router (#/login, #/dashboard, #/scorer, #/stats)
+// Mini-Router (#/login, #/dashboard, #/scorer, #/stats, #/livescorer)
 // -----------------------------
 window.onhashchange = () => {
   const page = window.location.hash || '#/login';
@@ -21,6 +22,7 @@ window.onhashchange = () => {
   else if (page.startsWith('#/register')) renderRegister();
   else if (page.startsWith('#/dashboard')) renderDashboard();
   else if (page.startsWith('#/scorer'))   renderScorer();
+  else if (page.startsWith('#/livescorer')) renderScorer(); // Livescorer zeigt das Live-Scoring
   else if (page.startsWith('#/stats'))    renderStats();
   else renderLogin();
 };
@@ -99,11 +101,20 @@ async function renderDashboard() {
   };
 
   // NEU: Offene Spiele mit Datum anzeigen
-  const { data: openMatches, error: openErr } = await supabase
-    .from('matches')
-    .select('id, finished_at, gameday_id, board, p1:users!matches_p1_id_fkey(name), p2:users!matches_p2_id_fkey(name), gameday:gamedays(date)')
-    .is('finished_at', null)
-    .order('gameday_id', { ascending: false });
+  let openMatches = [];
+  let openErr = null;
+  try {
+    const res = await supabase
+      .from('matches')
+      .select('id, finished_at, gameday_id, board, p1:users!matches_p1_id_fkey(name), p2:users!matches_p2_id_fkey(name), gameday:gamedays(date)')
+      .is('finished_at', null)
+      .order('gameday_id', { ascending: false });
+    openMatches = res.data || [];
+    openErr = res.error;
+  } catch (e) {
+    openErr = e;
+    openMatches = [];
+  }
   if (!openErr && openMatches && openMatches.length) {
     document.getElementById('openMatches').innerHTML = `
       <div class="flex items-center justify-between mb-2">
@@ -362,7 +373,7 @@ async function renderDashboard() {
     }
 
     // Nach erfolgreichem Anlegen weiterleiten:
-    window.location.hash = '#/scorer';
+    window.location.hash = '#/scorer'; // Erst in die Matchauswahl
   };
 } // <-- Die schließende Klammer der Funktion steht jetzt korrekt!
 
@@ -392,7 +403,7 @@ async function renderScorer() {
   }
 
   // Aktuelles Board aus localStorage oder erstes Board als Default
-  if (!currentBoard || !boards.includes(currentBoard)) {
+  if (!currentBoard || !boards.includes(String(currentBoard))) { // <-- Vergleich als String!
     currentBoard = boards[0];
     localStorage.setItem('bullseyer_board', currentBoard);
   }
@@ -402,7 +413,7 @@ async function renderScorer() {
     <div class="max-w-sm mx-auto mt-8 space-y-4">
       <div class="flex gap-2 justify-center mb-4">
         ${boards.map(b => `
-          <button class="btn ${b == currentBoard ? 'bg-blue-600 text-white' : ''}" data-board="${b}">
+          <button class="btn ${String(b) == String(currentBoard) ? 'bg-blue-600 text-white' : ''}" data-board="${b}">
             Board ${b}
           </button>
         `).join('')}
@@ -416,15 +427,18 @@ async function renderScorer() {
 
   // Zurück-Button Handler
   document.getElementById('backToDashboard').onclick = () => {
+    currentMatch = null; // <--- Wichtig: Match-State zurücksetzen!
+    localStorage.removeItem('bullseyer_currentMatchId'); // Match-ID aus localStorage entfernen
     window.location.hash = '#/dashboard';
   };
 
   // Board-Wechsel-Handler
   app.querySelectorAll('[data-board]').forEach(btn => btn.onclick = () => {
-    currentBoard = btn.dataset.board;
+    currentBoard = String(btn.dataset.board); // <-- Board als String speichern!
     localStorage.setItem('bullseyer_board', currentBoard);
     // State zurücksetzen beim Board-Wechsel
     currentMatch = null;
+    localStorage.removeItem('bullseyer_currentMatchId');
     currentLeg = null;
     currentLegNo = 0;
     currentSetNo = 0;
@@ -435,363 +449,150 @@ async function renderScorer() {
     renderScorer();
   });
 
+  // Prüfe, ob ein Match aktiv ist (aus localStorage)
+  if (!currentMatch) {
+    const matchId = localStorage.getItem('bullseyer_currentMatchId');
+    if (matchId) {
+      // Hole offene Matches für das aktuelle Board
+      const matches = await fetchOpenMatches(currentBoard, true);
+      const m = matches.find(x => String(x.id) === String(matchId));
+      if (m) {
+        currentMatch = m;
+        currentSetNo = 1;
+        currentLegNo = 1;
+        setsWon = { p1: 0, p2: 0 };
+        currentPlayer = 'p1';
+        remainingP1 = 501;
+        remainingP2 = 501;
+        bullfinish = false;
+        currentLegSaved = false;
+        localStorage.setItem('bullseyer_currentMatchId', m.id); // <-- Korrigiert: m.id statt data.id
+        currentLeg = resetLeg();
+        window.location.hash = '#/livescorer'; // Route für Livescorer setzen
+        // renderScorer(); // ENTFERNT: Hash-Change übernimmt das Rendern
+      } else {
+        // Falls das Match nicht mehr existiert, entferne die ID
+        localStorage.removeItem('bullseyer_currentMatchId');
+      }
+    }
+  }
+
   // Wenn ein Match aktiv ist, direkt das Live-Scoring anzeigen
   if (currentMatch) {
-    renderLiveScorer(app);
+    // Spielernamen ergänzen, falls sie fehlen
+    if (!currentMatch.p1_name) {
+      currentMatch.p1_name = currentMatch.p1?.name || '[Spieler 1 fehlt]';
+    }
+    if (!currentMatch.p2_name) {
+      currentMatch.p2_name = currentMatch.p2?.name || '[Spieler 2 fehlt]';
+    }
+    renderLiveScorer({
+      app,
+      currentMatch,
+      currentSetNo,
+      bestSet: currentMatch.best_of_sets,
+      currentLegNo,
+      bestLeg: currentMatch.best_of_legs,
+      setsWon,
+      currentPlayer,
+      remainingP1,
+      remainingP2,
+      isP1Turn: currentPlayer === 'p1',
+      bullfinish,
+      currentLeg,
+      currentLegSaved,
+      saveLegFn: (...args) => saveLeg(currentMatch, currentLeg, ...args, remainingP1, bullfinish),
+      resetLegFn: () => {
+        currentLeg = resetLeg(currentMatch, currentSetNo, currentLegNo);
+        return currentLeg;
+      },
+      updateStateFn: (updates) => {
+        // State-Änderungen aus livescoring.js übernehmen
+        if (updates) {
+          if ('currentMatch' in updates) currentMatch = updates.currentMatch;
+          if ('currentSetNo' in updates) currentSetNo = updates.currentSetNo;
+          if ('currentLegNo' in updates) currentLegNo = updates.currentLegNo;
+          if ('setsWon' in updates) setsWon = updates.setsWon;
+          if ('currentPlayer' in updates) currentPlayer = updates.currentPlayer;
+          if ('remainingP1' in updates) remainingP1 = updates.remainingP1;
+          if ('remainingP2' in updates) remainingP2 = updates.remainingP2;
+          if ('bullfinish' in updates) bullfinish = updates.bullfinish;
+          if ('currentLeg' in updates) currentLeg = updates.currentLeg;
+          if ('currentLegSaved' in updates) currentLegSaved = updates.currentLegSaved;
+        }
+      }
+    });
     return;
   }
 
   // 2) Match-Auswahl
-  const scorerContent = document.getElementById('scorerContent');
+  const scorerContent = document.getElementById('scorerContent'); // <-- jetzt nach app.innerHTML!
   // NEU: Offene Matches mit Datum anzeigen
   const matches = await fetchOpenMatches(currentBoard, true); // true = mit Datum
+  console.log('Matches für Board', currentBoard, matches); // Debug: Zeige geladene Matches
   if (!matches.length) {
     scorerContent.innerHTML = '<p class="text-center mt-8">Kein offenes Match</p>';
     return;
   }
   scorerContent.innerHTML = matches.map(m =>
-    `<button class="btn w-full mb-2 flex flex-col items-start" data-mid="${m.id}">
-      <span>${m.p1.name}&nbsp;vs&nbsp;${m.p2.name}</span>
-      <span class="text-xs text-gray-500">${m.gameday?.date || ''}</span>
+    `<button type="button" class="btn w-full mb-2 flex flex-col items-start bg-blue-200 text-blue-900 hover:bg-blue-300 border-blue-300 border-2 rounded-lg py-3 px-4 transition" data-mid="${m.id}">
+      <span class="font-semibold text-lg">${m.p1.name}&nbsp;vs&nbsp;${m.p2.name}</span>
+      <span class="text-xs text-blue-700">${m.gameday?.date || ''}</span>
     </button>`
   ).join('');
-  // Event-Delegation für Touch/Click: Funktioniert jetzt auf allen Geräten (iPad/iOS Fix)
+  // Event-Delegation für Touch/Click: Nur noch click-Event (iPad/iOS Fix)
   let matchSelectLock = false;
   function handleMatchSelect(e) {
+    e.preventDefault();
+    e.stopPropagation();
     if (matchSelectLock) return;
+    matchSelectLock = true;
+    setTimeout(() => matchSelectLock = false, 400); // Doppelauslösung verhindern
     const btn = e.target.closest('button[data-mid]');
     if (!btn) return;
     const m = matches.find(x => String(x.id).trim() === String(btn.dataset.mid).trim());
     if (m) startMatch(m);
-    else alert('Match nicht gefunden!');
-    matchSelectLock = true;
-    setTimeout(() => { matchSelectLock = false; }, 300);
   }
-  scorerContent.addEventListener('pointerdown', handleMatchSelect);
-  scorerContent.addEventListener('click', function(e) {
-    // Doppelauslösung verhindern
-    if (matchSelectLock) return;
-    handleMatchSelect(e);
-  });
+  scorerContent.addEventListener('click', handleMatchSelect);
 }
 
 function startMatch(m) {
-  currentMatch = m;
-  currentSetNo = 1;
-  currentLegNo = 1;
-  setsWon = { p1: 0, p2: 0 };
-  currentPlayer = 'p1';
-  resetLeg();
-  renderScorer(); // Zeigt jetzt direkt das Live-Scoring, weil currentMatch gesetzt ist
-}
-
-function resetLeg() {
-  remainingP1 = remainingP2 = 501;
-  currentLeg = new Leg({ legId: crypto.randomUUID(), doubleIn: false, doubleOut: true });
-  bullfinish = false;
-  currentLegSaved = false;
-  // Leg sofort mit Minimaldaten in DB anlegen, damit Foreign Key für throws existiert
+  // Matchdaten inkl. Spielernamen aus Supabase nachladen
   (async () => {
-    try {
-      const { error } = await supabase.from('legs').insert({
-        id: currentLeg.id,
-        match_id: currentMatch?.id || null,
-        set_no: currentSetNo || 1,
-        leg_no: currentLegNo || 1,
-        starter: currentMatch?.p1_id || null,
-        start_score: 501
-      });
-      if (error && !String(error.message).includes('duplicate key')) {
-        console.error('Fehler beim Anlegen des Legs (resetLeg):', error);
-      } else {
-        currentLegSaved = true;
-      }
-    } catch (err) {
-      console.error('Fehler beim Anlegen des Legs (resetLeg):', err);
+    const { data, error } = await supabase
+      .from('matches')
+      .select(`*, p1:users!matches_p1_id_fkey(id, name), p2:users!matches_p2_id_fkey(id, name)`)
+      .eq('id', m.id)
+      .single();
+    if (error || !data) {
+      alert('Fehler beim Laden des Matches!');
+      return;
     }
+    // Spielernamen ins Match-Objekt kopieren
+    data.p1_name = data.p1?.name || '[Spieler 1 fehlt]';
+    data.p2_name = data.p2?.name || '[Spieler 2 fehlt]';
+    currentMatch = data;
+    currentSetNo = 1;
+    currentLegNo = 1;
+    setsWon = { p1: 0, p2: 0 };
+    currentPlayer = 'p1';
+    remainingP1 = 501;
+    remainingP2 = 501;
+    bullfinish = false;
+    currentLegSaved = false;
+    localStorage.setItem('bullseyer_currentMatchId', data.id); // Match-ID persistieren
+    currentLeg = resetLeg();
+    window.location.hash = '#/livescorer'; // Route für Livescorer setzen
+    // renderScorer(); // ENTFERNT: Hash-Change übernimmt das Rendern
   })();
-}
-
-function renderLiveScorer(app) {
-  const p1 = currentMatch.p1.name,
-        p2 = currentMatch.p2.name;
-  const bestLeg = currentMatch.best_of_legs,
-        bestSet = currentMatch.best_of_sets;
-  const isP1Turn = currentPlayer === 'p1';
-
-  let bullBtnHtml = '';
-  // Bullfinish- und Kein Bullfinish-Button anzeigen, wenn einer der Spieler 0 Rest hat (Leg gewonnen)
-  if (remainingP1 === 0 || remainingP2 === 0) {
-    bullBtnHtml = `
-      <button id="bullfinishBtn" class="rounded-full bg-red-600 text-white px-4 py-2 text-lg font-bold shadow-lg animate-pulse" type="button">Bullfinish</button>
-      <button id="noBullfinishBtn" class="rounded-full bg-gray-400 text-white px-4 py-2 text-lg font-bold shadow-lg ml-2" type="button">Kein Bullfinish</button>
-    `;
-  }
-  app.innerHTML = `
-  <div class="max-w-md mx-auto mt-6 space-y-4">
-    <div class="flex justify-between items-center mb-2">
-      <button id="backToMatchSelect" class="btn btn-sm bg-gray-400 hover:bg-gray-500 text-white">← Zurück zur Auswahl</button>
-      <h2 class="text-xl text-center flex-1">${p1} vs ${p2}</h2>
-    </div>
-    <div class="flex justify-center gap-4">
-      <span>Set ${currentSetNo}/${bestSet}</span>
-      <span>Leg ${currentLegNo}/${bestLeg}</span>
-    </div>
-    <div class="flex justify-between items-center mt-4 text-lg">
-      <div class="flex flex-col items-center w-1/3">
-        <span class="font-semibold mb-1">${p1}</span>
-        <span id="legsP1" class="text-sm mb-1">Sets: ${setsWon.p1}</span>
-        <strong id="remP1" class="${isP1Turn ? 'text-4xl' : 'text-2xl'}">${remainingP1}</strong>
-      </div>
-      <div class="flex flex-col items-center w-1/3">
-        <!-- Leer für Abstand -->
-      </div>
-      <div class="flex flex-col items-center w-1/3">
-        <span class="font-semibold mb-1">${p2}</span>
-        <span id="legsP2" class="text-sm mb-1">Sets: ${setsWon.p2}</span>
-        <strong id="remP2" class="${!isP1Turn ? 'text-4xl' : 'text-2xl'}">${remainingP2}</strong>
-      </div>
-    </div>
-    <form id="throwForm" class="flex justify-center gap-2">
-      <input type="number" name="score" class="input w-32 text-lg text-center" placeholder="Score" required />
-      <button class="btn">OK</button>
-    </form>
-    <div class="grid grid-cols-4 gap-3 justify-center max-w-xs mx-auto mt-2" id="quickScores">
-      <button type="button" class="btn bg-gray-200 hover:bg-blue-200 text-2xl py-4" data-score="26">26</button>
-      <button type="button" class="btn bg-gray-200 hover:bg-blue-200 text-2xl py-4" data-score="41">41</button>
-      <button type="button" class="btn bg-gray-200 hover:bg-blue-200 text-2xl py-4" data-score="45">45</button>
-      <button type="button" class="btn bg-gray-200 hover:bg-blue-200 text-2xl py-4" data-score="60">60</button>
-      <button type="button" class="btn bg-gray-200 hover:bg-blue-200 text-2xl py-4" data-score="81">81</button>
-      <button type="button" class="btn bg-gray-200 hover:bg-blue-200 text-2xl py-4" data-score="83">83</button>
-      <button type="button" class="btn bg-gray-200 hover:bg-blue-200 text-2xl py-4" data-score="85">85</button>
-      <button type="button" class="btn bg-gray-200 hover:bg-blue-200 text-2xl py-4" data-score="95">95</button>
-      <button type="button" class="btn bg-gray-200 hover:bg-blue-200 text-2xl py-4" data-score="100">100</button>
-      <button type="button" class="btn bg-gray-200 hover:bg-blue-200 text-2xl py-4" data-score="121">121</button>
-      <button type="button" class="btn bg-gray-200 hover:bg-blue-200 text-2xl py-4" data-score="140">140</button>
-      <button type="button" class="btn bg-gray-200 hover:bg-blue-200 text-2xl py-4" data-score="180">180</button>
-    </div>
-    <div class="flex justify-center gap-2 mt-2">
-      <button id="legWon" class="btn bg-green-600 text-white hidden">Leg gewonnen</button>
-      <button id="setWon" class="btn bg-blue-600 text-white hidden">Set gewonnen</button>
-      <button id="undoBtn" class="bg-red-500 hover:bg-red-600 text-white rounded-full py-1 px-3 transition ml-2">← Rückgängig</button>
-      ${bullBtnHtml}
-    </div>
-  </div>`;
-
-  // Hilfsfunktion für Leg/Set-Wechsel (vor den Button-Handlern deklarieren!)
-  function nextLegOrSet() {
-    if (setsWon.p1 > bestLeg / 2 || setsWon.p2 > bestLeg / 2 || currentLegNo >= bestLeg) {
-      document.getElementById('setWon').classList.remove('hidden');
-    } else {
-      currentLegNo++;
-      currentPlayer = 'p1';
-      resetLeg();
-      renderScorer();
-    }
-  }
-
-  // Bullfinish- und Kein Bullfinish-Button Handler
-  if (document.getElementById('bullfinishBtn')) {
-    document.getElementById('bullfinishBtn').onclick = async () => {
-      bullfinish = true;
-      await saveLeg(currentSetNo, currentLegNo);
-      nextLegOrSet();
-    };
-  }
-  if (document.getElementById('noBullfinishBtn')) {
-    document.getElementById('noBullfinishBtn').onclick = async () => {
-      bullfinish = false;
-      await saveLeg(currentSetNo, currentLegNo);
-      nextLegOrSet();
-    };
-  }
-
-  // Zurück zur Matchauswahl
-  document.getElementById('backToMatchSelect').onclick = () => {
-    currentMatch = null;
-    renderScorer();
-  };
-
-  // Rückgängig-Handler: letzten Wurf entfernen
-  document.getElementById('undoBtn').onclick = () => {
-    const last = currentLeg.scores.pop();
-    if (!last) return;
-    currentPlayer = last.playerId === currentMatch.p1_id ? 'p1' : 'p2';
-    if (currentPlayer === 'p1') {
-      remainingP1 = currentLeg.currentScore(currentMatch.p1_id);
-      document.getElementById('remP1').textContent = remainingP1;
-    } else {
-      remainingP2 = currentLeg.currentScore(currentMatch.p2_id);
-      document.getElementById('remP2').textContent = remainingP2;
-    }
-    renderLiveScorer(app);
-  };
-
-  // Score eintragen
-  document.getElementById('throwForm').onsubmit = async e => {
-    e.preventDefault();
-    const sc = parseInt(e.target.score.value, 10);
-    if (sc > 180) { alert('😡 Maximal 180 Punkte erlaubt!'); return; }
-    e.target.reset();
-    e.target.score.focus(); // <-- Diese Zeile sorgt für den Fokus!
-    const prev = isP1Turn ? remainingP1 : remainingP2;
-    const rem = prev - sc;
-    if (rem < 0) { alert('Bust!'); return; }
-    if (isP1Turn) { remainingP1 = rem; document.getElementById('remP1').textContent = rem; }
-    else          { remainingP2 = rem; document.getElementById('remP2').textContent = rem; }
-    currentLeg.addThrow({ playerId: isP1Turn ? currentMatch.p1_id : currentMatch.p2_id, darts: [sc] });
-
-    // NEU: Leg vor dem ersten Wurf speichern, falls noch nicht geschehen
-    if (!currentLegSaved) {
-      try {
-        const { error: legErr } = await supabase.from('legs').insert({
-          id: currentLeg.id,
-          match_id: currentMatch.id,
-          set_no: currentSetNo,
-          leg_no: currentLegNo,
-          starter: currentMatch.p1_id,
-          start_score: 501,
-          // finish_darts, duration_s, winner_id, bullfinish werden am Leg-Ende gesetzt
-        });
-        if (legErr) {
-          console.error('Fehler beim Anlegen des Legs:', legErr);
-          alert('Fehler beim Anlegen des Legs: ' + (legErr.message || legErr.details || legErr));
-          return;
-        }
-        currentLegSaved = true;
-      } catch (err) {
-        console.error('Fehler beim Anlegen des Legs:', err);
-        alert('Fehler beim Anlegen des Legs: ' + err.message);
-        return;
-      }
-    }
-
-    // Wurf in Tabelle throws speichern
-    try {
-      const throwObj = {
-        id: crypto.randomUUID(),
-        leg_id: currentLeg.id,
-        player_id: isP1Turn ? currentMatch.p1_id : currentMatch.p2_id,
-        score: sc,
-        order_no: currentLeg.scores.length, // 1-basiert, da nach addThrow
-        created_at: new Date().toISOString()
-      };
-      const { error: throwErr } = await supabase.from('throws').insert(throwObj);
-      if (throwErr) {
-        console.error('Fehler beim Speichern des Wurfs:', throwErr);
-        alert('Fehler beim Speichern des Wurfs: ' + (throwErr.message || throwErr.details || throwErr));
-      }
-    } catch (err) {
-      console.error('Fehler beim Eintragen des Wurfs:', err);
-    }
-
-    if (rem === 0) {
-      renderLiveScorer(app); // Neu rendern, damit Leg-Gewonnen- und Bullfinish-Button erscheinen
-    } else {
-      currentPlayer = isP1Turn ? 'p2' : 'p1';
-      renderLiveScorer(app);
-    }
-  };
-
-  // Leg gewonnen
-  document.getElementById('legWon').onclick = () => {
-    const win = remainingP1 === 0 ? 'p1' : 'p2';
-    setsWon[win]++;
-    document.getElementById('legsP1').textContent = setsWon.p1;
-    document.getElementById('legsP2').textContent = setsWon.p2;
-
-    saveLeg(currentSetNo, currentLegNo);
-    document.getElementById('legWon').classList.add('hidden');
-
-    if (setsWon.p1 > bestLeg / 2 || setsWon.p2 > bestLeg / 2 || currentLegNo >= bestLeg) {
-      document.getElementById('setWon').classList.remove('hidden');
-    } else {
-      currentLegNo++;
-      currentPlayer = 'p1';
-      resetLeg();
-      renderScorer();
-    }
-  };
-
-  // Set gewonnen / Match beendet
-  document.getElementById('setWon').onclick = async () => {
-    if (setsWon.p1 > bestSet / 2 || setsWon.p2 > bestSet / 2 || currentSetNo >= bestSet) {
-      alert('Match beendet!');
-      await supabase
-        .from('matches')
-        .update({ finished_at: new Date().toISOString() })
-        .eq('id', currentMatch.id);
-      currentMatch = null;
-      renderScorer();
-    } else {
-      currentSetNo++;
-      currentLegNo = 1;
-      setsWon = { p1: 0, p2: 0 };
-      currentPlayer = 'p1';
-      resetLeg();
-      renderScorer();
-    }
-  };
-
-  // Quick-Score-Buttons: Wert ins Eingabefeld übernehmen
-  setTimeout(() => {
-    const scoreInput = document.querySelector('input[name="score"]');
-    const throwForm = document.getElementById('throwForm');
-    if (scoreInput) scoreInput.focus();
-    document.querySelectorAll('#quickScores button[data-score]').forEach(btn => {
-      btn.onclick = () => {
-        if (scoreInput) {
-          scoreInput.value = btn.dataset.score;
-          scoreInput.focus();
-        }
-        if (throwForm) {
-          throwForm.requestSubmit();
-        }
-      };
-    });
-  }, 0);
-
-  // Setze den Fokus nach jedem Render auf das Score-Eingabefeld
-  setTimeout(() => {
-    const scoreInput = document.querySelector('input[name="score"]');
-    if (scoreInput) scoreInput.focus();
-  }, 0);
 }
 
 // --------------------------------------------------
 // Datenbank-Helper
 // --------------------------------------------------
-async function saveLeg(setNo, legNo) {
-  const { error } = await supabase.from('legs').update({
-    match_id: currentMatch.id,
-    set_no: setNo,
-    leg_no: legNo,
-    starter: currentMatch.p1_id,
-    start_score: 501,
-    finish_darts: currentLeg.throwCount,
-    duration_s: currentLeg.durationSeconds,
-    winner_id: remainingP1 === 0 ? currentMatch.p1_id : currentMatch.p2_id,
-    bullfinish: !!bullfinish
-  }).eq('id', currentLeg.id);
-  if (error) {
-    console.error('Fehler beim Speichern des Legs:', error);
-    alert('Fehler beim Speichern des Legs: ' + (error.message || error.details || error));
-  }
-}
-
 async function fetchBoardsForToday() {
-  const today = new Date().toISOString().slice(0, 10);
-  const { data: gs, error: gdErr } = 
-    await supabase
-    .from('gamedays')
-    .select('id')
-    .eq('date', today);
-  if (gdErr) { console.error(gdErr); return []; }
-  const ids = (gs || []).map(g => g.id);
-  const { data: ms, error: mErr } = await supabase.from('matches').select('board').is('finished_at', null).in('gameday_id', ids);
-  if (mErr) { console.error(mErr); return []; }
-  // Boards als Strings zurückgeben
-  return [...new Set(ms.map(m => m.board))];
+  // Immer nur Board 1 zurückgeben, da alle Matches auf Board 1 angelegt werden
+  return ['1'];
 }
 
 // Holt offene Matches für ein Board, optional mit Datum
@@ -801,15 +602,32 @@ async function fetchOpenMatches(board, withDate = false) {
   const { data, error } = await supabase
     .from('matches')
     .select(selectStr)
-    .eq('board', board)
+    .eq('board', Number(board)) // <-- Board als Zahl vergleichen!
     .is('finished_at', null);
-  console.log('fetchOpenMatches:', data, error);
+  console.log('fetchOpenMatches:', board, data, error); // Debug
   return data || [];
+}
+
+function renderNav() {
+  const app = document.getElementById('app');
+  if (!app) return;
+  const nav = document.createElement('nav');
+  nav.className = 'flex justify-center gap-4 mb-4';
+  nav.innerHTML = `
+    <button id="navDashboard" class="btn">Dashboard</button>
+    <button id="navScorer" class="btn">Scorer</button>
+    <button id="navStats" class="btn">Statistik</button>
+  `;
+  app.parentNode.insertBefore(nav, app);
+  document.getElementById('navDashboard').onclick = () => window.location.hash = '#/dashboard';
+  document.getElementById('navScorer').onclick = () => window.location.hash = '#/scorer';
+  document.getElementById('navStats').onclick = () => window.location.hash = '#/stats';
 }
 
 function renderStats() {
   // NEU: Statistik aus Tabelle legs und throws
   document.getElementById('app').innerHTML = '<p class="text-center mt-8">Lade Statistik…</p>';
+  renderNav();
   loadStats();
 }
 
@@ -843,7 +661,41 @@ async function loadStats() {
     document.getElementById('app').innerHTML = '<p class="text-red-600 text-center mt-8">Fehler beim Laden der Shortlegs: ' + shortErr.message + '</p>';
     return;
   }
+  // 3-Dart-Average pro Spieler berechnen
+  const { data: allThrows, error: allThrowsErr } = await supabase
+    .from('throws')
+    .select('player_id, score');
+  if (allThrowsErr) {
+    document.getElementById('app').innerHTML = '<p class="text-red-600 text-center mt-8">Fehler beim Laden der Würfe: ' + allThrowsErr.message + '</p>';
+    return;
+  }
+  // Spieler laden
+  const { data: players, error: playersErr } = await supabase
+    .from('users')
+    .select('id, name');
+  if (playersErr) {
+    document.getElementById('app').innerHTML = '<p class="text-red-600 text-center mt-8">Fehler beim Laden der Spieler: ' + playersErr.message + '</p>';
+    return;
+  }
+  // Durchschnitt berechnen
+  const playerStats = {};
+  allThrows.forEach(t => {
+    if (!playerStats[t.player_id]) playerStats[t.player_id] = { sum: 0, count: 0 };
+    playerStats[t.player_id].sum += t.score;
+    playerStats[t.player_id].count++;
+  });
   html += `<div class="mt-6">
+    <h3 class="text-lg mb-2">3-Dart-Average</h3>
+    <table class="w-full text-left mb-4">
+      <thead><tr><th class="pr-2">Spieler</th><th>Ø</th></tr></thead>
+      <tbody>
+        ${players.map(p => {
+          const s = playerStats[p.id];
+          const avg = s && s.count ? (s.sum / s.count * 3).toFixed(2) : '-';
+          return `<tr><td class="pr-2">${p.name}</td><td>${avg}</td></tr>`;
+        }).join('')}
+      </tbody>
+    </table>
     <h3 class="text-lg mb-2">Highscores (Wurf ≥ 101)</h3>
     <p>${throws.length} Highscores</p>
     <h3 class="text-lg mt-4 mb-2">Highfinishes (180)</h3>
