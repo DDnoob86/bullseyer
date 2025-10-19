@@ -1,5 +1,106 @@
-import { supabase } from './supabase.js';
+// ⚠️ MOCK-MODUS FÜR TESTS - Ändere zu './supabase.js' für echtes Backend
+import { supabase } from './supabase-mock.js';
 import { Leg } from './scorer.js';
+
+// Gemeinsame Leg-End-Handler-Funktion (vermeidet Code-Duplizierung)
+async function handleLegEnd(source) {
+  console.log(`[Bullseyer] Leg beendet - automatischer Übergang ins nächste Leg (${source})`);
+
+  // Leg in Datenbank speichern
+  if (window.currentMatch && window._lastRenderArgs?.currentLeg) {
+    try {
+      await saveLeg(window.currentMatch, window._lastRenderArgs.currentLeg, window.localSetNo, window.localLegNo, window.localRemainingP1, false);
+      console.log('[Bullseyer] Leg automatisch gespeichert');
+    } catch (error) {
+      console.error('[Bullseyer] Fehler beim Speichern des Legs:', error);
+    }
+  }
+
+  // Bestimme den Gewinner des Legs
+  const legWinner = window.localRemainingP1 === 0 ? 'p1' : 'p2';
+
+  // Erhöhe Leg-Zähler für den Gewinner
+  if (legWinner === 'p1') {
+    window.localLegsWon.p1++;
+  } else {
+    window.localLegsWon.p2++;
+  }
+
+  // Prüfe, ob Set gewonnen
+  const bestLeg = window._lastRenderArgs?.bestLeg || 3;
+  const setWon = window.localLegsWon.p1 >= bestLeg || window.localLegsWon.p2 >= bestLeg;
+
+  if (setWon) {
+    // Set gewonnen - Erhöhe Set-Zähler
+    if (window.localLegsWon.p1 >= bestLeg) {
+      window.localSetsWon.p1++;
+    } else {
+      window.localSetsWon.p2++;
+    }
+    console.log('[Bullseyer] Set automatisch gewonnen durch', legWinner, `(${source})`);
+
+    // MATCH-END-CHECK: Prüfe ob Match gewonnen
+    const bestSet = window._lastRenderArgs?.bestSet || 3;
+    const matchWinner = checkMatchEnd(window.localSetsWon, bestSet);
+
+    if (matchWinner) {
+      // Match ist beendet!
+      console.log('[Bullseyer] MATCH GEWONNEN von', matchWinner, `(${source})`);
+      await finishMatch(window.currentMatch, matchWinner, window.localSetsWon, window.allMatchThrows);
+      return true; // Signalisiert: Match beendet
+    }
+
+    // Kein Match-Ende: Neues Set starten
+    window.localSetNo++;
+    window.localLegNo = 1;
+    window.localLegsWon = { p1: 0, p2: 0 }; // Reset Legs für neues Set
+  } else {
+    // Nur Leg gewonnen - nächstes Leg
+    window.localLegNo++;
+  }
+
+  // Globale Variablen für neues Leg zurücksetzen
+  window.localRemainingP1 = 501;
+  window.localRemainingP2 = 501;
+
+  // Startspieler für nächstes Leg wechseln
+  window.localLegStarter = window.localLegStarter === 'p1' ? 'p2' : 'p1';
+  window.localCurrentPlayer = window.localLegStarter;
+
+  window.throwHistory = []; // Nur aktuelles Leg zurücksetzen
+  // allMatchThrows bleibt erhalten für Match-Average
+  window.localBullfinish = false;
+  window.localLegSaved = true; // Leg ist gespeichert
+
+  console.log('[Bullseyer] Neues Leg automatisch gestartet - Leg', window.localLegNo, 'Set', window.localSetNo, 'Starter:', window.localLegStarter);
+
+  // Erstelle neues Leg für die Datenbank
+  const newLeg = resetLeg(window.currentMatch, window.localSetNo, window.localLegNo);
+  window._lastRenderArgs.currentLeg = newLeg;
+
+  // UI aktualisieren
+  if (typeof window.syncLocalVars === 'function') {
+    window.syncLocalVars();
+  }
+  if (typeof window.updateRestpunkteUI === 'function') {
+    window.updateRestpunkteUI();
+  }
+  if (typeof window.updateSetsLegsUI === 'function') {
+    window.updateSetsLegsUI();
+  }
+  if (typeof window.updateAverages === 'function') {
+    window.updateAverages(window.throwHistory);
+  }
+
+  // UI für neues Leg neu rendern
+  setTimeout(() => {
+    if (typeof window.renderLiveScorer === 'function') {
+      window.renderLiveScorer(window._lastRenderArgs);
+    }
+  }, 100);
+
+  return false; // Signalisiert: Leg beendet, aber Match läuft weiter
+}
 
 // Delegation-Handler für alle Livescorer-Buttons (robust, nur EINMAL pro Session, auch bei Hot-Reload)
 (function() {
@@ -47,19 +148,65 @@ import { Leg } from './scorer.js';
     if (hasDataScore) {
       console.log('[Bullseyer] Quick-Score Button geklickt:', btn.dataset.score);
       const score = parseInt(btn.dataset.score, 10);
-      
+
       // Direkt den Score verarbeiten (ohne Formular)
       if (isNaN(score) || score < 0 || score > 180) {
         console.error('[Bullseyer] Ungültiger Score:', score);
         return;
       }
-      
-      // Prüfe, ob der Score möglich ist
+
+      // Befülle die 3-Dart-Displays mit realistischen Werten
+      const dartValues = distributeDarts(score);
+
+      // Prüfe Bust-Bedingungen
       let rem = window.localCurrentPlayer === 'p1' ? window.localRemainingP1 : window.localRemainingP2;
+      const newRemaining = rem - score;
+
+      // BUST: Score zu hoch
       if (score > rem) {
-        console.log('[Bullseyer] Score zu hoch:', score, 'Remaining:', rem);
+        console.log('[Bullseyer] BUST: Score zu hoch (Quick-Score)');
+        alert('BUST! Score zu hoch.');
         return;
       }
+
+      // BUST: Remaining = 1
+      if (newRemaining === 1) {
+        console.log('[Bullseyer] BUST: Remaining = 1 (Quick-Score)');
+        alert('BUST! Kann nicht auf 1 finishen.');
+        return;
+      }
+
+      // BUST: Remaining < 0
+      if (newRemaining < 0) {
+        console.log('[Bullseyer] BUST: Score unter 0 (Quick-Score)');
+        alert('BUST! Score unter 0.');
+        return;
+      }
+
+      // Double-Out Validierung
+      if (newRemaining === 0 && window.currentMatch?.double_out) {
+        const lastDart = dartValues[2];
+        const isValidDouble = (lastDart >= 2 && lastDart <= 40 && lastDart % 2 === 0) || lastDart === 50;
+
+        if (!isValidDouble) {
+          console.log('[Bullseyer] BUST: Kein Double-Out (Quick-Score) - letzter Dart:', lastDart);
+          alert('BUST! Muss mit Double finishen.');
+          return;
+        }
+
+        console.log('[Bullseyer] ✅ Gültiges Double-Out (Quick-Score) mit Dart:', lastDart);
+      }
+
+      // Befülle die 3-Dart-Displays
+      window.darts[0] = dartValues[0];
+      window.darts[1] = dartValues[1];
+      window.darts[2] = dartValues[2];
+      window.currentDartIndex = 2; // Setze auf letzten Dart
+      if (window.updateDartDisplays) window.updateDartDisplays();
+
+      const submitBtn = document.querySelector('#submitScore');
+      if (submitBtn) submitBtn.textContent = 'Score eingeben';
+      console.log('[Bullseyer] Quick-Score verteilt auf Darts:', dartValues);
       
       // Speichere Wurf im Undo-Stack
       window.throwHistory.push({
@@ -75,7 +222,10 @@ import { Leg } from './scorer.js';
         legStarter: window.localLegStarter,
         gameStarter: window.localGameStarter
       });
-      
+
+      // Aktualisiere detaillierte Statistiken
+      if (window.updateDetailedStats) window.updateDetailedStats();
+
       // Speichere Wurf auch in Match-History für persistente Averages
       window.allMatchThrows.push({
         player: window.localCurrentPlayer,
@@ -102,9 +252,9 @@ import { Leg } from './scorer.js';
             match_id: currentMatch.id,
             leg_id: legId,
             player_id: playerId,
-            dart1: score,
-            dart2: null,
-            dart3: null,
+            dart1: dartValues[0] || 0,
+            dart2: dartValues[1] || 0,
+            dart3: dartValues[2] || 0,
             total: score,
             score: score,
             is_finish: (rem - score === 0),
@@ -160,88 +310,8 @@ import { Leg } from './scorer.js';
       
       // Leg/Set-Ende prüfen und automatisch behandeln
       if (window.localRemainingP1 === 0 || window.localRemainingP2 === 0) {
-        // Leg automatisch beenden
-        console.log('[Bullseyer] Leg beendet - automatischer Übergang ins nächste Leg');
-        
-        // Leg in Datenbank speichern
-        if (window.currentMatch && window._lastRenderArgs?.currentLeg) {
-          try {
-            await saveLeg(window.currentMatch, window._lastRenderArgs.currentLeg, window.localSetNo, window.localLegNo, window.localRemainingP1, false);
-            console.log('[Bullseyer] Leg automatisch gespeichert');
-          } catch (error) {
-            console.error('[Bullseyer] Fehler beim Speichern des Legs:', error);
-          }
-        }
-        
-        // Bestimme den Gewinner des Legs
-        const legWinner = window.localRemainingP1 === 0 ? 'p1' : 'p2';
-        
-        // Erhöhe Leg-Zähler für den Gewinner
-        if (legWinner === 'p1') {
-          window.localLegsWon.p1++;
-        } else {
-          window.localLegsWon.p2++;
-        }
-        
-        // Prüfe, ob Set gewonnen
-        const bestLeg = window._lastRenderArgs?.bestLeg || 3;
-        const setWon = window.localLegsWon.p1 >= bestLeg || window.localLegsWon.p2 >= bestLeg;
-        
-        if (setWon) {
-          // Set gewonnen - Erhöhe Set-Zähler und Reset für neues Set
-          if (window.localLegsWon.p1 >= bestLeg) {
-            window.localSetsWon.p1++;
-          } else {
-            window.localSetsWon.p2++;
-          }
-          console.log('[Bullseyer] Set automatisch gewonnen durch', legWinner);
-          window.localSetNo++;
-          window.localLegNo = 1;
-          window.localLegsWon = { p1: 0, p2: 0 }; // Reset Legs für neues Set
-        } else {
-          // Nur Leg gewonnen - nächstes Leg
-          window.localLegNo++;
-        }
-        
-        // Globale Variablen für neues Leg zurücksetzen
-        window.localRemainingP1 = 501;
-        window.localRemainingP2 = 501;
-        
-        // Startspieler für nächstes Leg wechseln
-        window.localLegStarter = window.localLegStarter === 'p1' ? 'p2' : 'p1';
-        window.localCurrentPlayer = window.localLegStarter;
-        
-        window.throwHistory = []; // Nur aktuelles Leg zurücksetzen
-        // allMatchThrows bleibt erhalten für Match-Average
-        window.localBullfinish = false;
-        window.localLegSaved = true; // Leg ist gespeichert
-        
-        console.log('[Bullseyer] Neues Leg automatisch gestartet - Leg', window.localLegNo, 'Set', window.localSetNo, 'Starter:', window.localLegStarter);
-        
-        // Erstelle neues Leg für die Datenbank
-        const newLeg = resetLeg(window.currentMatch, window.localSetNo, window.localLegNo);
-        window._lastRenderArgs.currentLeg = newLeg;
-        
-        // UI aktualisieren
-        if (typeof window.syncLocalVars === 'function') {
-          window.syncLocalVars();
-        }
-        if (typeof window.updateRestpunkteUI === 'function') {
-          window.updateRestpunkteUI();
-        }
-        if (typeof window.updateSetsLegsUI === 'function') {
-          window.updateSetsLegsUI();
-        }
-        if (typeof window.updateAverages === 'function') {
-          window.updateAverages(window.throwHistory);
-        }
-        
-        // UI für neues Leg neu rendern
-        setTimeout(() => {
-          if (typeof window.renderLiveScorer === 'function') {
-            window.renderLiveScorer(window._lastRenderArgs);
-          }
-        }, 100);
+        const matchEnded = await handleLegEnd('Quick-Score');
+        if (matchEnded) return; // Match beendet - nicht weiter ausführen
       }
       
       return; // Quick-Score-Buttons werden hier behandelt
@@ -285,6 +355,44 @@ let localLegSaved = false;
 let lastMatchId = null;
 let localLegStarter = 'p1'; // Wer das aktuelle Leg gestartet hat
 let localGameStarter = null; // Wer das Match gestartet hat (initial null = noch nicht gewählt)
+
+// Helper: Verteile Gesamt-Score auf 3 realistische Darts
+function distributeDarts(totalScore) {
+  const distributions = {
+    180: [60, 60, 60],
+    140: [60, 60, 20],
+    121: [60, 41, 20],
+    100: [60, 20, 20],
+    95: [60, 25, 10],
+    85: [60, 20, 5],
+    83: [60, 20, 3],
+    81: [60, 20, 1],
+    60: [20, 20, 20],
+    45: [25, 20, 0],
+    41: [20, 20, 1],
+    26: [20, 6, 0]
+  };
+
+  if (distributions[totalScore]) {
+    return distributions[totalScore];
+  }
+
+  // Fallback: Verteile gleichmäßig (max 60 pro Dart)
+  let remaining = totalScore;
+  const result = [0, 0, 0];
+
+  for (let i = 0; i < 3; i++) {
+    if (remaining >= 60) {
+      result[i] = 60;
+      remaining -= 60;
+    } else {
+      result[i] = remaining;
+      remaining = 0;
+    }
+  }
+
+  return result;
+}
 
 // Live-Scoring-UI und Logik
 export function renderLiveScorer({
@@ -390,6 +498,7 @@ export function renderLiveScorer({
   window.updateRestpunkteUI = updateRestpunkteUI;
   window.updateSetsLegsUI = updateSetsLegsUI;
   window.syncLocalVars = syncLocalVars;
+  window.updatePlayerIndicator = updatePlayerIndicator;
   window.renderLiveScorer = renderLiveScorer;
   
   // Stelle sicher, dass currentLeg existiert
@@ -439,98 +548,198 @@ export function renderLiveScorer({
     }
     app.innerHTML = `
       ${nameWarn}
-      <div class="flex flex-row justify-between gap-4 mb-4 items-center">
-        <button id="backToMatchSelect" class="bg-gray-400 px-3 py-1 rounded">&larr; Zurück</button>
-        <div class="player1-box w-1/2 bg-blue-50 border-2 border-blue-300 rounded-lg p-4 flex flex-col items-center">
-          <div class="text-center font-semibold text-lg text-blue-900">${p1Name}</div>
-          <div class="text-sm font-bold text-center mb-1 text-blue-800 bg-blue-100 px-2 py-1 rounded" id="avgP1Leg">Leg: Ø -</div>
-          <div class="text-sm font-bold text-center mb-1 text-blue-800 bg-blue-200 px-2 py-1 rounded" id="avgP1Match">Match: Ø -</div>
-          <div class="text-center text-4xl mt-2 font-bold text-blue-600" id="restP1">${localRemainingP1}</div>
-          <div class="text-xs mt-1 text-blue-700" id="p1SetsDisplay">Sets: ${localSetsWon.p1}/${bestSet}</div>
-          <div class="text-xs text-blue-700" id="p1LegsDisplay">Legs: ${localLegsWon.p1}/${bestLeg}</div>
+      <div class="flex flex-row justify-between gap-6 mb-6 items-stretch">
+        <button id="backToMatchSelect" class="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg shadow-md transition-all font-semibold self-start">&larr; Zurück</button>
+        <div class="player1-box w-1/2 bg-gradient-to-br from-emerald-50 to-emerald-100 border-4 border-emerald-600 rounded-xl p-6 flex flex-col items-center shadow-xl">
+          <div class="text-center font-bold text-2xl text-emerald-900 mb-3">${p1Name}</div>
+          <div class="text-sm font-semibold text-center mb-2 text-emerald-800 bg-emerald-200 px-3 py-1.5 rounded-lg" id="avgP1Leg">Leg Ø: -</div>
+          <div class="text-sm font-semibold text-center mb-3 text-emerald-800 bg-emerald-300 px-3 py-1.5 rounded-lg" id="avgP1Match">Match Ø: -</div>
+          <div class="text-center text-6xl mt-2 font-bold text-emerald-700 tabular-nums" id="restP1">${localRemainingP1}</div>
+          <div class="text-sm mt-4 font-semibold text-emerald-800 bg-white px-3 py-1 rounded-full" id="p1SetsDisplay">Sets: ${localSetsWon.p1}/${bestSet}</div>
+          <div class="text-sm mt-1 font-semibold text-emerald-800 bg-white px-3 py-1 rounded-full" id="p1LegsDisplay">Legs: ${localLegsWon.p1}/${bestLeg}</div>
         </div>
-        <div class="player2-box w-1/2 bg-red-50 border-2 border-red-300 rounded-lg p-4 flex flex-col items-center">
-          <div class="text-center font-semibold text-lg text-red-900">${p2Name}</div>
-          <div class="text-sm font-bold text-center mb-1 text-red-800 bg-red-100 px-2 py-1 rounded" id="avgP2Leg">Leg: Ø -</div>
-          <div class="text-sm font-bold text-center mb-1 text-red-800 bg-red-200 px-2 py-1 rounded" id="avgP2Match">Match: Ø -</div>
-          <div class="text-center text-4xl mt-2 font-bold text-red-600" id="restP2">${localRemainingP2}</div>
-          <div class="text-xs mt-1 text-red-700" id="p2SetsDisplay">Sets: ${localSetsWon.p2}/${bestSet}</div>
-          <div class="text-xs text-red-700" id="p2LegsDisplay">Legs: ${localLegsWon.p2}/${bestLeg}</div>
+        <div class="player2-box w-1/2 bg-gradient-to-br from-rose-50 to-rose-100 border-4 border-rose-600 rounded-xl p-6 flex flex-col items-center shadow-xl">
+          <div class="text-center font-bold text-2xl text-rose-900 mb-3">${p2Name}</div>
+          <div class="text-sm font-semibold text-center mb-2 text-rose-800 bg-rose-200 px-3 py-1.5 rounded-lg" id="avgP2Leg">Leg Ø: -</div>
+          <div class="text-sm font-semibold text-center mb-3 text-rose-800 bg-rose-300 px-3 py-1.5 rounded-lg" id="avgP2Match">Match Ø: -</div>
+          <div class="text-center text-6xl mt-2 font-bold text-rose-700 tabular-nums" id="restP2">${localRemainingP2}</div>
+          <div class="text-sm mt-4 font-semibold text-rose-800 bg-white px-3 py-1 rounded-full" id="p2SetsDisplay">Sets: ${localSetsWon.p2}/${bestSet}</div>
+          <div class="text-sm mt-1 font-semibold text-rose-800 bg-white px-3 py-1 rounded-full" id="p2LegsDisplay">Legs: ${localLegsWon.p2}/${bestLeg}</div>
         </div>
       </div>
-      
+
+      <!-- Live Statistics Panel -->
+      <div class="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-6 mb-6 shadow-2xl border-2 border-gray-700">
+        <div class="flex justify-between items-center mb-4">
+          <h3 class="text-2xl font-bold text-white flex items-center gap-2">
+            📊 Match Statistiken
+          </h3>
+          <button id="toggleStats" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg font-semibold transition">
+            <span id="toggleStatsText">Details ▼</span>
+          </button>
+        </div>
+
+        <div id="statsDetails" class="hidden">
+          <div class="grid grid-cols-2 gap-6">
+            <!-- Player 1 Stats -->
+            <div class="bg-gradient-to-br from-emerald-900/50 to-emerald-800/30 rounded-lg p-4 border-2 border-emerald-600">
+              <h4 class="text-lg font-bold text-emerald-300 mb-3 text-center">${p1Name}</h4>
+              <div class="space-y-2 text-sm">
+                <div class="flex justify-between text-gray-200">
+                  <span>🎯 180s:</span>
+                  <span id="p1_180s" class="font-bold text-amber-400">0</span>
+                </div>
+                <div class="flex justify-between text-gray-200">
+                  <span>💯 140+:</span>
+                  <span id="p1_140plus" class="font-bold text-emerald-400">0</span>
+                </div>
+                <div class="flex justify-between text-gray-200">
+                  <span>🏆 Highscore:</span>
+                  <span id="p1_highscore" class="font-bold text-white">0</span>
+                </div>
+                <div class="flex justify-between text-gray-200">
+                  <span>🎲 Würfe (Leg):</span>
+                  <span id="p1_darts_leg" class="font-bold">0</span>
+                </div>
+                <div class="flex justify-between text-gray-200">
+                  <span>🎲 Würfe (Match):</span>
+                  <span id="p1_darts_match" class="font-bold">0</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Player 2 Stats -->
+            <div class="bg-gradient-to-br from-rose-900/50 to-rose-800/30 rounded-lg p-4 border-2 border-rose-600">
+              <h4 class="text-lg font-bold text-rose-300 mb-3 text-center">${p2Name}</h4>
+              <div class="space-y-2 text-sm">
+                <div class="flex justify-between text-gray-200">
+                  <span>🎯 180s:</span>
+                  <span id="p2_180s" class="font-bold text-amber-400">0</span>
+                </div>
+                <div class="flex justify-between text-gray-200">
+                  <span>💯 140+:</span>
+                  <span id="p2_140plus" class="font-bold text-rose-400">0</span>
+                </div>
+                <div class="flex justify-between text-gray-200">
+                  <span>🏆 Highscore:</span>
+                  <span id="p2_highscore" class="font-bold text-white">0</span>
+                </div>
+                <div class="flex justify-between text-gray-200">
+                  <span>🎲 Würfe (Leg):</span>
+                  <span id="p2_darts_leg" class="font-bold">0</span>
+                </div>
+                <div class="flex justify-between text-gray-200">
+                  <span>🎲 Würfe (Match):</span>
+                  <span id="p2_darts_match" class="font-bold">0</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Startspieler-Auswahl für das erste Leg -->
       ${localGameStarter === null ? `
-      <div id="starterSelection" class="bg-yellow-100 border-2 border-yellow-400 rounded-lg p-4 mb-4 text-center">
-        <div class="text-lg font-bold mb-3">Wer soll das erste Leg beginnen?</div>
-        <div class="flex gap-4 justify-center">
-          <button id="startP1" class="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg font-bold">${p1Name} beginnt</button>
-          <button id="startP2" class="bg-red-500 hover:bg-red-600 text-white px-6 py-3 rounded-lg font-bold">${p2Name} beginnt</button>
+      <div id="starterSelection" class="bg-gradient-to-r from-amber-100 to-yellow-100 border-4 border-amber-500 rounded-xl p-6 mb-6 text-center shadow-xl">
+        <div class="text-2xl font-bold mb-4 text-amber-900">Wer beginnt das erste Leg?</div>
+        <div class="flex gap-6 justify-center">
+          <button id="startP1" class="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-4 rounded-xl font-bold text-lg shadow-lg transition-all transform hover:scale-105">${p1Name} beginnt</button>
+          <button id="startP2" class="bg-rose-600 hover:bg-rose-700 text-white px-8 py-4 rounded-xl font-bold text-lg shadow-lg transition-all transform hover:scale-105">${p2Name} beginnt</button>
         </div>
       </div>
       ` : ''}
       
-      <div class="flex flex-col items-center mb-2">
-        <div class="text-sm mb-4">Set ${localSetNo}/${bestSet} &nbsp; Leg ${localLegNo}/${bestLeg} &nbsp; 
-          ${localGameStarter ? `<span class="text-green-600">⬆ ${localLegStarter === 'p1' ? p1Name : p2Name} ist dran</span>` : ''}
+      <div class="flex flex-col items-center mb-4">
+        <div class="text-lg font-bold mb-6 bg-gray-800 text-white px-6 py-3 rounded-xl shadow-lg">
+          Set ${localSetNo}/${bestSet} • Leg ${localLegNo}/${bestLeg}
+          ${localGameStarter ? `<span class="ml-4 text-emerald-400">▶ ${localLegStarter === 'p1' ? p1Name : p2Name}</span>` : ''}
         </div>
-        
+
         <!-- Score-Eingabe Bereich: Ziffernblock und Quick-Scores nebeneinander -->
-        <div class="flex gap-4 mb-4">
-          <!-- Digitaler Ziffernblock für Score-Eingabe -->
-          <div class="p-4 bg-white rounded-lg border-2 border-gray-300">
-            <div class="text-center mb-2">
-              <div class="text-lg font-bold">Score eingeben</div>
-              <div id="scoreDisplay" class="text-3xl font-mono bg-gray-100 border rounded px-4 py-2 min-w-[120px] text-center">0</div>
+        <div class="flex gap-6 mb-6">
+          <!-- Digitaler Ziffernblock für 3-Dart-Eingabe -->
+          <div class="p-6 bg-white rounded-xl border-4 border-gray-300 shadow-xl">
+            <div class="text-center mb-4">
+              <div class="text-xl font-bold text-gray-800 mb-3">3-Dart-Eingabe</div>
+              <div class="flex gap-3 justify-center mb-3">
+                <div class="flex flex-col items-center">
+                  <div class="text-xs font-semibold text-gray-600 mb-2">DART 1</div>
+                  <div id="dart1Display" class="text-3xl font-mono bg-gray-50 border-4 border-emerald-500 rounded-lg px-4 py-3 w-20 text-center shadow-md">0</div>
+                  <div class="flex gap-1 mt-2">
+                    <button type="button" data-dart="0" data-mult="1" class="mult-btn active bg-blue-500 text-white text-xs font-bold px-2 py-1 rounded hover:bg-blue-600 transition">S</button>
+                    <button type="button" data-dart="0" data-mult="2" class="mult-btn bg-emerald-500 text-white text-xs font-bold px-2 py-1 rounded hover:bg-emerald-600 transition">D</button>
+                    <button type="button" data-dart="0" data-mult="3" class="mult-btn bg-amber-500 text-white text-xs font-bold px-2 py-1 rounded hover:bg-amber-600 transition">T</button>
+                  </div>
+                </div>
+                <div class="flex flex-col items-center">
+                  <div class="text-xs font-semibold text-gray-600 mb-2">DART 2</div>
+                  <div id="dart2Display" class="text-3xl font-mono bg-gray-50 border-2 border-gray-300 rounded-lg px-4 py-3 w-20 text-center">0</div>
+                  <div class="flex gap-1 mt-2">
+                    <button type="button" data-dart="1" data-mult="1" class="mult-btn active bg-blue-500 text-white text-xs font-bold px-2 py-1 rounded hover:bg-blue-600 transition">S</button>
+                    <button type="button" data-dart="1" data-mult="2" class="mult-btn bg-emerald-500 text-white text-xs font-bold px-2 py-1 rounded hover:bg-emerald-600 transition">D</button>
+                    <button type="button" data-dart="1" data-mult="3" class="mult-btn bg-amber-500 text-white text-xs font-bold px-2 py-1 rounded hover:bg-amber-600 transition">T</button>
+                  </div>
+                </div>
+                <div class="flex flex-col items-center">
+                  <div class="text-xs font-semibold text-gray-600 mb-2">DART 3</div>
+                  <div id="dart3Display" class="text-3xl font-mono bg-gray-50 border-2 border-gray-300 rounded-lg px-4 py-3 w-20 text-center">0</div>
+                  <div class="flex gap-1 mt-2">
+                    <button type="button" data-dart="2" data-mult="1" class="mult-btn active bg-blue-500 text-white text-xs font-bold px-2 py-1 rounded hover:bg-blue-600 transition">S</button>
+                    <button type="button" data-dart="2" data-mult="2" class="mult-btn bg-emerald-500 text-white text-xs font-bold px-2 py-1 rounded hover:bg-emerald-600 transition">D</button>
+                    <button type="button" data-dart="2" data-mult="3" class="mult-btn bg-amber-500 text-white text-xs font-bold px-2 py-1 rounded hover:bg-amber-600 transition">T</button>
+                  </div>
+                </div>
+              </div>
+              <div class="text-lg font-bold text-gray-700 bg-gray-100 px-4 py-2 rounded-lg">Total: <span id="totalDisplay" class="text-2xl text-emerald-700">0</span></div>
             </div>
-            
+
             <!-- Ziffernblock -->
-            <div class="grid grid-cols-3 gap-2 mb-3">
-              <button type="button" data-digit="1" class="keypad-btn bg-blue-100 hover:bg-blue-200 border rounded text-xl font-bold py-3 px-4">1</button>
-              <button type="button" data-digit="2" class="keypad-btn bg-blue-100 hover:bg-blue-200 border rounded text-xl font-bold py-3 px-4">2</button>
-              <button type="button" data-digit="3" class="keypad-btn bg-blue-100 hover:bg-blue-200 border rounded text-xl font-bold py-3 px-4">3</button>
-              <button type="button" data-digit="4" class="keypad-btn bg-blue-100 hover:bg-blue-200 border rounded text-xl font-bold py-3 px-4">4</button>
-              <button type="button" data-digit="5" class="keypad-btn bg-blue-100 hover:bg-blue-200 border rounded text-xl font-bold py-3 px-4">5</button>
-              <button type="button" data-digit="6" class="keypad-btn bg-blue-100 hover:bg-blue-200 border rounded text-xl font-bold py-3 px-4">6</button>
-              <button type="button" data-digit="7" class="keypad-btn bg-blue-100 hover:bg-blue-200 border rounded text-xl font-bold py-3 px-4">7</button>
-              <button type="button" data-digit="8" class="keypad-btn bg-blue-100 hover:bg-blue-200 border rounded text-xl font-bold py-3 px-4">8</button>
-              <button type="button" data-digit="9" class="keypad-btn bg-blue-100 hover:bg-blue-200 border rounded text-xl font-bold py-3 px-4">9</button>
-              <button type="button" id="clearBtn" class="bg-red-100 hover:bg-red-200 border rounded text-lg font-bold py-3 px-4">C</button>
-              <button type="button" data-digit="0" class="keypad-btn bg-blue-100 hover:bg-blue-200 border rounded text-xl font-bold py-3 px-4">0</button>
-              <button type="button" id="backspaceBtn" class="bg-yellow-100 hover:bg-yellow-200 border rounded text-lg font-bold py-3 px-4">⌫</button>
+            <div class="grid grid-cols-3 gap-3 mb-4">
+              <button type="button" data-digit="1" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 hover:from-slate-200 hover:to-slate-300 border-2 border-slate-300 rounded-lg text-2xl font-bold py-4 px-5 shadow-md transition-all transform hover:scale-105">1</button>
+              <button type="button" data-digit="2" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 hover:from-slate-200 hover:to-slate-300 border-2 border-slate-300 rounded-lg text-2xl font-bold py-4 px-5 shadow-md transition-all transform hover:scale-105">2</button>
+              <button type="button" data-digit="3" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 hover:from-slate-200 hover:to-slate-300 border-2 border-slate-300 rounded-lg text-2xl font-bold py-4 px-5 shadow-md transition-all transform hover:scale-105">3</button>
+              <button type="button" data-digit="4" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 hover:from-slate-200 hover:to-slate-300 border-2 border-slate-300 rounded-lg text-2xl font-bold py-4 px-5 shadow-md transition-all transform hover:scale-105">4</button>
+              <button type="button" data-digit="5" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 hover:from-slate-200 hover:to-slate-300 border-2 border-slate-300 rounded-lg text-2xl font-bold py-4 px-5 shadow-md transition-all transform hover:scale-105">5</button>
+              <button type="button" data-digit="6" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 hover:from-slate-200 hover:to-slate-300 border-2 border-slate-300 rounded-lg text-2xl font-bold py-4 px-5 shadow-md transition-all transform hover:scale-105">6</button>
+              <button type="button" data-digit="7" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 hover:from-slate-200 hover:to-slate-300 border-2 border-slate-300 rounded-lg text-2xl font-bold py-4 px-5 shadow-md transition-all transform hover:scale-105">7</button>
+              <button type="button" data-digit="8" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 hover:from-slate-200 hover:to-slate-300 border-2 border-slate-300 rounded-lg text-2xl font-bold py-4 px-5 shadow-md transition-all transform hover:scale-105">8</button>
+              <button type="button" data-digit="9" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 hover:from-slate-200 hover:to-slate-300 border-2 border-slate-300 rounded-lg text-2xl font-bold py-4 px-5 shadow-md transition-all transform hover:scale-105">9</button>
+              <button type="button" id="clearBtn" class="bg-gradient-to-br from-red-400 to-red-500 hover:from-red-500 hover:to-red-600 text-white border-2 border-red-600 rounded-lg text-xl font-bold py-4 px-5 shadow-md transition-all transform hover:scale-105">C</button>
+              <button type="button" data-digit="0" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 hover:from-slate-200 hover:to-slate-300 border-2 border-slate-300 rounded-lg text-2xl font-bold py-4 px-5 shadow-md transition-all transform hover:scale-105">0</button>
+              <button type="button" id="backspaceBtn" class="bg-gradient-to-br from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-white border-2 border-amber-600 rounded-lg text-xl font-bold py-4 px-5 shadow-md transition-all transform hover:scale-105">⌫</button>
             </div>
-            
+
             <!-- Submit Button -->
-            <button type="button" id="submitScore" class="w-full bg-green-500 hover:bg-green-600 text-white text-xl font-bold py-4 rounded">Score eingeben</button>
+            <button type="button" id="submitScore" class="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white text-xl font-bold py-5 rounded-xl shadow-lg transition-all transform hover:scale-105">Weiter →</button>
           </div>
           
           <!-- Quick-Score Auswahl -->
-          <div class="p-4 bg-white rounded-lg border-2 border-gray-300">
-            <div class="text-center mb-3">
-              <div class="text-lg font-bold">Schnellauswahl</div>
+          <div class="p-6 bg-white rounded-xl border-4 border-gray-300 shadow-xl">
+            <div class="text-center mb-4">
+              <div class="text-xl font-bold text-gray-800">Schnellauswahl</div>
             </div>
-            <div id="quickScores" class="grid grid-cols-3 gap-2">
-              <button data-score="26" class="bg-blue-100 hover:bg-blue-200 border rounded text-lg font-bold py-3 px-4">26</button>
-              <button data-score="41" class="bg-blue-100 hover:bg-blue-200 border rounded text-lg font-bold py-3 px-4">41</button>
-              <button data-score="45" class="bg-blue-100 hover:bg-blue-200 border rounded text-lg font-bold py-3 px-4">45</button>
-              <button data-score="60" class="bg-blue-100 hover:bg-blue-200 border rounded text-lg font-bold py-3 px-4">60</button>
-              <button data-score="81" class="bg-blue-100 hover:bg-blue-200 border rounded text-lg font-bold py-3 px-4">81</button>
-              <button data-score="83" class="bg-blue-100 hover:bg-blue-200 border rounded text-lg font-bold py-3 px-4">83</button>
-              <button data-score="85" class="bg-blue-100 hover:bg-blue-200 border rounded text-lg font-bold py-3 px-4">85</button>
-              <button data-score="95" class="bg-blue-100 hover:bg-blue-200 border rounded text-lg font-bold py-3 px-4">95</button>
-              <button data-score="100" class="bg-blue-100 hover:bg-blue-200 border rounded text-lg font-bold py-3 px-4">100</button>
-              <button data-score="121" class="bg-blue-100 hover:bg-blue-200 border rounded text-lg font-bold py-3 px-4">121</button>
-              <button data-score="140" class="bg-blue-100 hover:bg-blue-200 border rounded text-lg font-bold py-3 px-4">140</button>
-              <button data-score="180" class="bg-blue-100 hover:bg-blue-200 border rounded text-lg font-bold py-3 px-4">180</button>
+            <div id="quickScores" class="grid grid-cols-3 gap-3">
+              <button data-score="26" class="bg-gradient-to-br from-cyan-100 to-cyan-200 hover:from-cyan-200 hover:to-cyan-300 border-2 border-cyan-400 rounded-lg text-lg font-bold py-3 px-4 shadow-md transition-all transform hover:scale-105">26</button>
+              <button data-score="41" class="bg-gradient-to-br from-cyan-100 to-cyan-200 hover:from-cyan-200 hover:to-cyan-300 border-2 border-cyan-400 rounded-lg text-lg font-bold py-3 px-4 shadow-md transition-all transform hover:scale-105">41</button>
+              <button data-score="45" class="bg-gradient-to-br from-cyan-100 to-cyan-200 hover:from-cyan-200 hover:to-cyan-300 border-2 border-cyan-400 rounded-lg text-lg font-bold py-3 px-4 shadow-md transition-all transform hover:scale-105">45</button>
+              <button data-score="60" class="bg-gradient-to-br from-sky-100 to-sky-200 hover:from-sky-200 hover:to-sky-300 border-2 border-sky-400 rounded-lg text-lg font-bold py-3 px-4 shadow-md transition-all transform hover:scale-105">60</button>
+              <button data-score="81" class="bg-gradient-to-br from-sky-100 to-sky-200 hover:from-sky-200 hover:to-sky-300 border-2 border-sky-400 rounded-lg text-lg font-bold py-3 px-4 shadow-md transition-all transform hover:scale-105">81</button>
+              <button data-score="83" class="bg-gradient-to-br from-sky-100 to-sky-200 hover:from-sky-200 hover:to-sky-300 border-2 border-sky-400 rounded-lg text-lg font-bold py-3 px-4 shadow-md transition-all transform hover:scale-105">83</button>
+              <button data-score="85" class="bg-gradient-to-br from-blue-100 to-blue-200 hover:from-blue-200 hover:to-blue-300 border-2 border-blue-400 rounded-lg text-lg font-bold py-3 px-4 shadow-md transition-all transform hover:scale-105">85</button>
+              <button data-score="95" class="bg-gradient-to-br from-blue-100 to-blue-200 hover:from-blue-200 hover:to-blue-300 border-2 border-blue-400 rounded-lg text-lg font-bold py-3 px-4 shadow-md transition-all transform hover:scale-105">95</button>
+              <button data-score="100" class="bg-gradient-to-br from-indigo-100 to-indigo-200 hover:from-indigo-200 hover:to-indigo-300 border-2 border-indigo-400 rounded-lg text-lg font-bold py-3 px-4 shadow-md transition-all transform hover:scale-105">100</button>
+              <button data-score="121" class="bg-gradient-to-br from-purple-100 to-purple-200 hover:from-purple-200 hover:to-purple-300 border-2 border-purple-400 rounded-lg text-lg font-bold py-3 px-4 shadow-md transition-all transform hover:scale-105">121</button>
+              <button data-score="140" class="bg-gradient-to-br from-amber-100 to-amber-200 hover:from-amber-200 hover:to-amber-300 border-2 border-amber-500 rounded-lg text-lg font-bold py-3 px-4 shadow-md transition-all transform hover:scale-105">140</button>
+              <button data-score="180" class="bg-gradient-to-br from-amber-200 to-amber-300 hover:from-amber-300 hover:to-amber-400 border-2 border-amber-600 rounded-lg text-lg font-bold py-3 px-4 shadow-md transition-all transform hover:scale-105">180</button>
             </div>
           </div>
-          
+
           <!-- Action Buttons -->
-          <div class="p-4 bg-white rounded-lg border-2 border-gray-300 flex flex-col gap-3">
-            <div class="text-center mb-1">
-              <div class="text-lg font-bold">Aktionen</div>
+          <div class="p-6 bg-white rounded-xl border-4 border-gray-300 shadow-xl flex flex-col gap-4">
+            <div class="text-center">
+              <div class="text-xl font-bold text-gray-800 mb-4">Aktionen</div>
             </div>
-            <button id="undoBtn" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded font-bold">⏪ Rückgängig</button>
+            <button id="undoBtn" class="bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white px-6 py-4 rounded-xl font-bold text-lg shadow-lg transition-all transform hover:scale-105">⏪ Rückgängig</button>
           </div>
         </div>
       `;
@@ -576,11 +785,8 @@ export function renderLiveScorer({
     if (p2SetsEl) p2SetsEl.textContent = `Sets: ${localSetsWon.p2}/${bestSet}`;
     if (p2LegsEl) p2LegsEl.textContent = `Legs: ${localLegsWon.p2}/${bestLeg}`;
     if (setLegEl) setLegEl.textContent = `Set ${localSetNo}/${bestSet}   Leg ${localLegNo}/${bestLeg}`;
-    
-    // Score Display zurücksetzen
-    const scoreDisplay = document.getElementById('scoreDisplay');
-    if (scoreDisplay) scoreDisplay.textContent = '0';
-    
+
+    // Dart Displays sind bereits mit "0" initialisiert im HTML
     backBtn = app.querySelector('#backToMatchSelect');
   }
 
@@ -605,6 +811,27 @@ export function renderLiveScorer({
       localCurrentPlayer,
       localLegStarter
     });
+  }
+
+  // Helper: Visueller Indikator für aktiven Spieler
+  function updatePlayerIndicator() {
+    const player1Box = document.querySelector('.player1-box');
+    const player2Box = document.querySelector('.player2-box');
+    if (!player1Box || !player2Box) return;
+
+    const currentPlayer = window.localCurrentPlayer || localCurrentPlayer;
+
+    if (currentPlayer === 'p1') {
+      // P1 ist aktiv: leuchtender emerald Border + Pulseffekt
+      player1Box.className = 'player1-box w-1/2 bg-gradient-to-br from-emerald-50 to-emerald-100 border-4 border-emerald-600 rounded-xl p-6 flex flex-col items-center shadow-xl animate-pulse';
+      // P2 ist inaktiv: grauer Border + ausgegraut
+      player2Box.className = 'player2-box w-1/2 bg-gradient-to-br from-rose-50 to-rose-100 border-2 border-gray-300 rounded-xl p-6 flex flex-col items-center opacity-50';
+    } else {
+      // P2 ist aktiv: leuchtender rose Border + Pulseffekt
+      player2Box.className = 'player2-box w-1/2 bg-gradient-to-br from-rose-50 to-rose-100 border-4 border-rose-600 rounded-xl p-6 flex flex-col items-center shadow-xl animate-pulse';
+      // P1 ist inaktiv: grauer Border + ausgegraut
+      player1Box.className = 'player1-box w-1/2 bg-gradient-to-br from-emerald-50 to-emerald-100 border-2 border-gray-300 rounded-xl p-6 flex flex-col items-center opacity-50';
+    }
   }
 
   // Helper: State-Update
@@ -658,6 +885,11 @@ export function renderLiveScorer({
     restP1El.textContent = currentP1;
     restP2El.textContent = currentP2;
     console.log('[Bullseyer] UI aktualisiert - P1:', currentP1, 'P2:', currentP2);
+
+    // Aktualisiere auch den Player-Indicator
+    if (typeof window.updatePlayerIndicator === 'function') {
+      window.updatePlayerIndicator();
+    }
   }
 
   // Helper: Sets/Legs Anzeige aktualisieren
@@ -730,6 +962,9 @@ export function renderLiveScorer({
     updateAverages(throwHistory);
   }, 10);
 
+  // Player-Indicator beim initialen Render setzen
+  setTimeout(updatePlayerIndicator, 15);
+
   // Setze den Seitentitel auf Livescorer
   document.title = 'Livescorer';
 
@@ -794,8 +1029,13 @@ export function renderLiveScorer({
     });
   }
   
-  // 2. Ziffernblock für Score-Eingabe - nur einmal pro Session initialisieren
-  const scoreDisplay = app.querySelector('#scoreDisplay');
+  // 2. 3-Dart-Eingabe - nur einmal pro Session initialisieren
+  const dart1Display = app.querySelector('#dart1Display');
+  const dart2Display = app.querySelector('#dart2Display');
+  const dart3Display = app.querySelector('#dart3Display');
+  const totalDisplay = app.querySelector('#totalDisplay');
+  const dartDisplays = [dart1Display, dart2Display, dart3Display];
+
   const keypadBtns = app.querySelectorAll('.keypad-btn');
   const clearBtn = app.querySelector('#clearBtn');
   const backspaceBtn = app.querySelector('#backspaceBtn');
@@ -803,71 +1043,243 @@ export function renderLiveScorer({
   const quickScores = app.querySelector('#quickScores');
   const undoBtn = app.querySelector('#undoBtn');
 
+  // 3-Dart-Eingabe State (pro Render) - im window-Objekt speichern für Quick-Score-Handler
+  window.currentDartIndex = 0; // 0=Dart1, 1=Dart2, 2=Dart3
+  window.darts = [0, 0, 0]; // Die 3 Dart-Werte
+  window.dartMultipliers = window.dartMultipliers || [1, 1, 1]; // Die 3 Multiplier (1=Single, 2=Double, 3=Triple)
+  let currentDartIndex = window.currentDartIndex;
+  let darts = window.darts;
+
+  // Helper: Aktualisiere Dart-Displays und Highlight
+  function updateDartDisplays() {
+    dartDisplays.forEach((display, i) => {
+      if (display) {
+        const value = window.darts[i];
+        const mult = window.dartMultipliers[i];
+
+        // Prefix je nach Multiplier
+        let prefix = '';
+        if (value > 0) {
+          if (mult === 2) prefix = 'D';
+          else if (mult === 3) prefix = 'T';
+          else prefix = 'S';
+        }
+
+        display.textContent = value > 0 ? prefix + value : value;
+
+        // Highlight current dart
+        if (i === window.currentDartIndex) {
+          display.classList.add('border-2', 'border-blue-500');
+          display.classList.remove('border');
+        } else {
+          display.classList.remove('border-2', 'border-blue-500');
+          display.classList.add('border');
+        }
+      }
+    });
+    if (totalDisplay) {
+      // Berechne Total mit Multipliers
+      const total = (window.darts[0] * window.dartMultipliers[0]) +
+                    (window.darts[1] * window.dartMultipliers[1]) +
+                    (window.darts[2] * window.dartMultipliers[2]);
+      totalDisplay.textContent = total;
+    }
+  }
+  window.updateDartDisplays = updateDartDisplays;
+
+  // Helper: Aktualisiere detaillierte Statistiken
+  function updateDetailedStats() {
+    const currentThrowHistory = window.throwHistory || [];
+
+    // Initialisiere Stats
+    const stats = {
+      p1: { count180: 0, count140Plus: 0, highScore: 0, dartsLeg: 0, dartsMatch: 0 },
+      p2: { count180: 0, count140Plus: 0, highScore: 0, dartsLeg: 0, dartsMatch: 0 }
+    };
+
+    // Berechne Stats aus der Throw-History
+    currentThrowHistory.forEach(th => {
+      const player = th.player;
+      const score = th.score;
+
+      if (player === 'p1' || player === 'p2') {
+        stats[player].dartsMatch += 3; // Jeder Wurf = 3 Darts
+
+        if (score === 180) stats[player].count180++;
+        if (score >= 140) stats[player].count140Plus++;
+        if (score > stats[player].highScore) stats[player].highScore = score;
+      }
+    });
+
+    // Darts im aktuellen Leg (seit letztem Leg-Start)
+    let dartsLegP1 = 0, dartsLegP2 = 0;
+    for (let i = currentThrowHistory.length - 1; i >= 0; i--) {
+      const th = currentThrowHistory[i];
+      if (th.legStart) break; // Leg-Start gefunden
+      if (th.player === 'p1') dartsLegP1 += 3;
+      if (th.player === 'p2') dartsLegP2 += 3;
+    }
+    stats.p1.dartsLeg = dartsLegP1;
+    stats.p2.dartsLeg = dartsLegP2;
+
+    // Aktualisiere UI
+    const statP1_180 = app.querySelector('#statP1_180');
+    const statP1_140 = app.querySelector('#statP1_140');
+    const statP1_high = app.querySelector('#statP1_high');
+    const statP1_dartsLeg = app.querySelector('#statP1_dartsLeg');
+    const statP1_dartsMatch = app.querySelector('#statP1_dartsMatch');
+
+    const statP2_180 = app.querySelector('#statP2_180');
+    const statP2_140 = app.querySelector('#statP2_140');
+    const statP2_high = app.querySelector('#statP2_high');
+    const statP2_dartsLeg = app.querySelector('#statP2_dartsLeg');
+    const statP2_dartsMatch = app.querySelector('#statP2_dartsMatch');
+
+    if (statP1_180) statP1_180.textContent = stats.p1.count180;
+    if (statP1_140) statP1_140.textContent = stats.p1.count140Plus;
+    if (statP1_high) statP1_high.textContent = stats.p1.highScore;
+    if (statP1_dartsLeg) statP1_dartsLeg.textContent = stats.p1.dartsLeg;
+    if (statP1_dartsMatch) statP1_dartsMatch.textContent = stats.p1.dartsMatch;
+
+    if (statP2_180) statP2_180.textContent = stats.p2.count180;
+    if (statP2_140) statP2_140.textContent = stats.p2.count140Plus;
+    if (statP2_high) statP2_high.textContent = stats.p2.highScore;
+    if (statP2_dartsLeg) statP2_dartsLeg.textContent = stats.p2.dartsLeg;
+    if (statP2_dartsMatch) statP2_dartsMatch.textContent = stats.p2.dartsMatch;
+  }
+  window.updateDetailedStats = updateDetailedStats;
+
   // Prüfe, ob Ziffernblock bereits initialisiert wurde
-  const keypadContainer = app.querySelector('.grid.grid-cols-3.gap-2.mb-3');
+  const keypadContainer = app.querySelector('.grid.grid-cols-3.gap-3.mb-4');
   if (keypadContainer && !keypadContainer.hasAttribute('data-bullseyer-initialized')) {
     keypadContainer.setAttribute('data-bullseyer-initialized', 'true');
     
     // Ziffernblock Event-Handler - nur einmal hinzufügen
-    if (keypadBtns && scoreDisplay) {
+    if (keypadBtns) {
       keypadBtns.forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.stopPropagation(); // Verhindere Event-Bubbling
           const digit = btn.getAttribute('data-digit');
-          let currentValue = scoreDisplay.textContent;
-          console.log('[Bullseyer] Ziffernblock-Klick:', digit, 'Aktueller Wert:', currentValue);
-          if (currentValue === '0') {
-            scoreDisplay.textContent = digit;
-          } else if (currentValue.length < 3) {
-            const newValue = parseInt(currentValue + digit);
-            if (newValue <= 180) {
-              scoreDisplay.textContent = newValue.toString();
+          let currentValue = window.darts[window.currentDartIndex];
+          console.log('[Bullseyer] Ziffernblock-Klick:', digit, 'Dart', window.currentDartIndex + 1, 'Wert:', currentValue);
+
+          // Baue neuen Wert auf
+          if (currentValue === 0) {
+            window.darts[window.currentDartIndex] = parseInt(digit);
+          } else {
+            const newValue = parseInt(currentValue.toString() + digit);
+            // Max 60 pro Dart (T20 = Triple 20)
+            if (newValue <= 60) {
+              window.darts[window.currentDartIndex] = newValue;
             }
           }
-          console.log('[Bullseyer] Neuer Wert nach Klick:', scoreDisplay.textContent);
+
+          updateDartDisplays();
+          console.log('[Bullseyer] Dart', window.currentDartIndex + 1, 'Wert:', window.darts[window.currentDartIndex]);
+        });
+      });
+    }
+
+    // Multiplier Buttons (S/D/T) - nur einmal hinzufügen
+    const multBtns = app.querySelectorAll('.mult-btn');
+    if (multBtns) {
+      multBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const dartIndex = parseInt(btn.getAttribute('data-dart'));
+          const mult = parseInt(btn.getAttribute('data-mult'));
+
+          // Setze Multiplier für diesen Dart
+          window.dartMultipliers[dartIndex] = mult;
+
+          // Update Button-Styles: Nur der geklickte Button bekommt "active"-Highlight
+          const dartGroup = btn.parentElement;
+          dartGroup.querySelectorAll('.mult-btn').forEach(b => {
+            if (b === btn) {
+              b.classList.add('ring-2', 'ring-white', 'ring-offset-2');
+            } else {
+              b.classList.remove('ring-2', 'ring-white', 'ring-offset-2');
+            }
+          });
+
+          updateDartDisplays();
+          console.log('[Bullseyer] Multiplier gesetzt - Dart', dartIndex + 1, 'Mult:', mult);
         });
       });
     }
 
     // Clear Button - nur einmal hinzufügen
-    if (clearBtn && scoreDisplay) {
+    if (clearBtn) {
       clearBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        scoreDisplay.textContent = '0';
-        console.log('[Bullseyer] Clear-Button geklickt - Score zurückgesetzt');
+        window.darts = [0, 0, 0];
+        window.dartMultipliers = [1, 1, 1];
+        window.currentDartIndex = 0;
+
+        // Reset Multiplier-Button Highlights
+        app.querySelectorAll('.mult-btn').forEach(btn => {
+          const mult = parseInt(btn.getAttribute('data-mult'));
+          if (mult === 1) {
+            btn.classList.add('ring-2', 'ring-white', 'ring-offset-2');
+          } else {
+            btn.classList.remove('ring-2', 'ring-white', 'ring-offset-2');
+          }
+        });
+
+        updateDartDisplays();
+        console.log('[Bullseyer] Clear-Button geklickt - Alle Darts zurückgesetzt');
       });
     }
 
     // Backspace Button - nur einmal hinzufügen
-    if (backspaceBtn && scoreDisplay) {
+    if (backspaceBtn) {
       backspaceBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        let currentValue = scoreDisplay.textContent;
-        if (currentValue.length > 1) {
-          scoreDisplay.textContent = currentValue.slice(0, -1);
+        let currentValue = window.darts[window.currentDartIndex];
+        if (currentValue >= 10) {
+          // Entferne letzte Ziffer
+          window.darts[window.currentDartIndex] = Math.floor(currentValue / 10);
         } else {
-          scoreDisplay.textContent = '0';
+          window.darts[window.currentDartIndex] = 0;
         }
-        console.log('[Bullseyer] Backspace-Button geklickt - Neuer Wert:', scoreDisplay.textContent);
+        updateDartDisplays();
+        console.log('[Bullseyer] Backspace-Button geklickt - Dart', window.currentDartIndex + 1, 'Wert:', window.darts[window.currentDartIndex]);
       });
     }
 
     // Submit Score Button - nur einmal hinzufügen
-    if (submitScoreBtn && scoreDisplay) {
-      submitScoreBtn.addEventListener('click', async (e) => {        e.stopPropagation();
-        const score = parseInt(scoreDisplay.textContent);
-        console.log('[Bullseyer] Ziffernblock-Submit:', score);
-        
-        if (isNaN(score) || score < 0 || score > 180) {
-          scoreDisplay.style.backgroundColor = '#fecaca'; // red-200
-          setTimeout(() => scoreDisplay.style.backgroundColor = '#f3f4f6', 1000); // gray-100
+    if (submitScoreBtn) {
+      submitScoreBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+
+        // Wenn noch nicht alle 3 Darts eingegeben: Springe zum nächsten Dart
+        if (window.currentDartIndex < 2) {
+          window.currentDartIndex++;
+          updateDartDisplays();
+          submitScoreBtn.textContent = window.currentDartIndex === 2 ? 'Score eingeben' : 'Weiter →';
+          console.log('[Bullseyer] Nächster Dart:', window.currentDartIndex + 1);
           return;
         }
-        
+
+        // Alle 3 Darts eingegeben - jetzt submitten
+        const score = (window.darts[0] * window.dartMultipliers[0]) +
+                      (window.darts[1] * window.dartMultipliers[1]) +
+                      (window.darts[2] * window.dartMultipliers[2]);
+        console.log('[Bullseyer] 3-Dart-Submit:', window.darts, 'Multipliers:', window.dartMultipliers, 'Total:', score);
+
+        if (isNaN(score) || score < 0 || score > 180) {
+          if (totalDisplay) {
+            totalDisplay.style.color = '#dc2626'; // red-600
+            setTimeout(() => totalDisplay.style.color = '', 1000);
+          }
+          return;
+        }
+
         // Verwende die aktuellen window-Variablen
         const currentP1 = window.localCurrentPlayer;
         const currentRemainingP1 = window.localRemainingP1;
         const currentRemainingP2 = window.localRemainingP2;
+        const currentMatch = window.currentMatch;
         const currentSetsWon = window.localSetsWon;
         const currentLegNo = window.localLegNo;
         const currentSetNo = window.localSetNo;
@@ -882,13 +1294,138 @@ export function renderLiveScorer({
           score
         });
         
-        // Prüfe, ob der Score möglich ist
+        // Prüfe Bust-Bedingungen
         let rem = currentP1 === 'p1' ? currentRemainingP1 : currentRemainingP2;
+        const newRemaining = rem - score;
+
+        // BUST Bedingung 1: Score zu hoch
         if (score > rem) {
-          console.log('[Bullseyer] Score zu hoch - Ziffernblock:', score, 'Remaining:', rem);
-          scoreDisplay.style.backgroundColor = '#fecaca'; // red-200
-          setTimeout(() => scoreDisplay.style.backgroundColor = '#f3f4f6', 1000); // gray-100
+          console.log('[Bullseyer] BUST: Score zu hoch -', score, 'Remaining:', rem);
+          if (totalDisplay) {
+            totalDisplay.style.color = '#dc2626'; // red-600
+            setTimeout(() => totalDisplay.style.color = '', 1000);
+          }
+          // Zeige BUST-Nachricht
+          alert('BUST! Score zu hoch.');
+          // Dart-Eingabe zurücksetzen
+          window.darts = [0, 0, 0];
+          window.dartMultipliers = [1, 1, 1];
+          window.currentDartIndex = 0;
+
+          // Reset Multiplier-Button Highlights
+          app.querySelectorAll('.mult-btn').forEach(btn => {
+            const mult = parseInt(btn.getAttribute('data-mult'));
+            if (mult === 1) {
+              btn.classList.add('ring-2', 'ring-white', 'ring-offset-2');
+            } else {
+              btn.classList.remove('ring-2', 'ring-white', 'ring-offset-2');
+            }
+          });
+
+          updateDartDisplays();
+          submitScoreBtn.textContent = 'Weiter →';
+          // Spieler wechseln ohne Score zu ändern
+          window.localCurrentPlayer = currentP1 === 'p1' ? 'p2' : 'p1';
+          renderLiveScorer(window._lastRenderArgs);
           return;
+        }
+
+        // BUST Bedingung 2: Remaining = 1 (kann nicht mit Double finishen)
+        if (newRemaining === 1) {
+          console.log('[Bullseyer] BUST: Remaining = 1 (unmöglich zu finishen)');
+          if (totalDisplay) {
+            totalDisplay.style.color = '#dc2626'; // red-600
+            setTimeout(() => totalDisplay.style.color = '', 1000);
+          }
+          alert('BUST! Kann nicht auf 1 finishen (nur Double möglich).');
+          window.darts = [0, 0, 0];
+          window.dartMultipliers = [1, 1, 1];
+          window.currentDartIndex = 0;
+
+          // Reset Multiplier-Button Highlights
+          app.querySelectorAll('.mult-btn').forEach(btn => {
+            const mult = parseInt(btn.getAttribute('data-mult'));
+            if (mult === 1) {
+              btn.classList.add('ring-2', 'ring-white', 'ring-offset-2');
+            } else {
+              btn.classList.remove('ring-2', 'ring-white', 'ring-offset-2');
+            }
+          });
+
+          updateDartDisplays();
+          submitScoreBtn.textContent = 'Weiter →';
+          window.localCurrentPlayer = currentP1 === 'p1' ? 'p2' : 'p1';
+          renderLiveScorer(window._lastRenderArgs);
+          return;
+        }
+
+        // BUST Bedingung 3: Remaining < 0
+        if (newRemaining < 0) {
+          console.log('[Bullseyer] BUST: Score unter 0 -', newRemaining);
+          if (totalDisplay) {
+            totalDisplay.style.color = '#dc2626'; // red-600
+            setTimeout(() => totalDisplay.style.color = '', 1000);
+          }
+          alert('BUST! Score unter 0.');
+          window.darts = [0, 0, 0];
+          window.dartMultipliers = [1, 1, 1];
+          window.currentDartIndex = 0;
+
+          // Reset Multiplier-Button Highlights
+          app.querySelectorAll('.mult-btn').forEach(btn => {
+            const mult = parseInt(btn.getAttribute('data-mult'));
+            if (mult === 1) {
+              btn.classList.add('ring-2', 'ring-white', 'ring-offset-2');
+            } else {
+              btn.classList.remove('ring-2', 'ring-white', 'ring-offset-2');
+            }
+          });
+
+          updateDartDisplays();
+          submitScoreBtn.textContent = 'Weiter →';
+          window.localCurrentPlayer = currentP1 === 'p1' ? 'p2' : 'p1';
+          renderLiveScorer(window._lastRenderArgs);
+          return;
+        }
+
+        // Double-Out Validierung: Bei Finish (remaining = 0) prüfe ob letzter Dart ein Double ist
+        if (newRemaining === 0 && currentMatch?.double_out) {
+          // Prüfe den Multiplier des 3. Darts (Index 2)
+          const lastDartMultiplier = window.dartMultipliers[2];
+          const lastDartValue = window.darts[2];
+
+          // Gültiges Double: Multiplier muss 2 sein
+          const isValidDouble = lastDartMultiplier === 2;
+
+          if (!isValidDouble) {
+            console.log('[Bullseyer] BUST: Kein Double-Out - letzter Dart:', lastDartValue, 'Multiplier:', lastDartMultiplier);
+            if (totalDisplay) {
+              totalDisplay.style.color = '#dc2626'; // red-600
+              setTimeout(() => totalDisplay.style.color = '', 1000);
+            }
+            alert('BUST! Muss mit Double finishen (D-Button drücken).');
+            window.darts = [0, 0, 0];
+            window.dartMultipliers = [1, 1, 1];
+            window.currentDartIndex = 0;
+
+            // Reset Multiplier-Button Highlights
+            app.querySelectorAll('.mult-btn').forEach(btn => {
+              const mult = parseInt(btn.getAttribute('data-mult'));
+              if (mult === 1) {
+                btn.classList.add('ring-2', 'ring-white', 'ring-offset-2');
+              } else {
+                btn.classList.remove('ring-2', 'ring-white', 'ring-offset-2');
+              }
+            });
+
+            updateDartDisplays();
+            submitScoreBtn.textContent = 'Weiter →';
+            window.localCurrentPlayer = currentP1 === 'p1' ? 'p2' : 'p1';
+            renderLiveScorer(window._lastRenderArgs);
+            return;
+          }
+
+          console.log('[Bullseyer] ✅ Gültiges Double-Out mit Dart:', lastDartValue, 'Multiplier:', lastDartMultiplier);
         }
         
         // Speichere Wurf im Undo-Stack
@@ -942,9 +1479,9 @@ export function renderLiveScorer({
               match_id: currentMatch.id,
               leg_id: newLeg.id,
               player_id: playerId,
-              dart1: score,
-              dart2: null,
-              dart3: null,
+              dart1: window.darts[0] || 0,
+              dart2: window.darts[1] || 0,
+              dart3: window.darts[2] || 0,
               total: score,
               score: score,
               is_finish: (rem - score === 0),
@@ -952,13 +1489,13 @@ export function renderLiveScorer({
               order: currentThrowHistory.length,
               created_at: new Date().toISOString()
             };
-            
-            console.log('[Bullseyer] Insert Throw (Ziffernblock) mit neuer Leg-ID:', insertObj);
+
+            console.log('[Bullseyer] Insert Throw (3-Dart) mit neuer Leg-ID:', insertObj);
             const { error, data } = await supabase.from('throws').insert([insertObj]);
             if (error) {
               console.error('Supabase Insert Error:', error);
             } else {
-              console.log('[Bullseyer] Ziffernblock-Wurf erfolgreich gespeichert:', data);
+              console.log('[Bullseyer] 3-Dart-Wurf erfolgreich gespeichert:', data);
             }
           } else {
             // Normale Speicherung mit vorhandener Leg-ID
@@ -967,9 +1504,9 @@ export function renderLiveScorer({
               match_id: currentMatch.id,
               leg_id: legId,
               player_id: playerId,
-              dart1: score,
-              dart2: null,
-              dart3: null,
+              dart1: window.darts[0] || 0,
+              dart2: window.darts[1] || 0,
+              dart3: window.darts[2] || 0,
               total: score,
               score: score,
               is_finish: (rem - score === 0),
@@ -978,12 +1515,12 @@ export function renderLiveScorer({
               created_at: new Date().toISOString()
             };
             
-            console.log('[Bullseyer] Insert Throw (Ziffernblock):', insertObj);
+            console.log('[Bullseyer] Insert Throw (3-Dart):', insertObj);
             const { error, data } = await supabase.from('throws').insert([insertObj]);
             if (error) {
               console.error('Supabase Insert Error:', error);
             } else {
-              console.log('[Bullseyer] Ziffernblock-Wurf erfolgreich gespeichert:', data);
+              console.log('[Bullseyer] 3-Dart-Wurf erfolgreich gespeichert:', data);
             }
           }
         } catch (err) {
@@ -1004,104 +1541,44 @@ export function renderLiveScorer({
         // Aktualisiere throwHistory
         window.throwHistory = currentThrowHistory;
         window.localLegSaved = currentLegSaved;
-        
+
+        // Aktualisiere detaillierte Statistiken
+        if (window.updateDetailedStats) window.updateDetailedStats();
+
         // Synchronisiere die lokalen Variablen
         if (typeof window.syncLocalVars === 'function') {
           window.syncLocalVars();
         }
         
-        console.log('[Bullseyer] Ziffernblock-Score verarbeitet - Neue Werte:', {
+        console.log('[Bullseyer] 3-Dart-Score verarbeitet - Neue Werte:', {
           localRemainingP1: window.localRemainingP1,
           localRemainingP2: window.localRemainingP2,
           localCurrentPlayer: window.localCurrentPlayer
         });
-        
-        // Score Display zurücksetzen
-        scoreDisplay.textContent = '0';
-        
+
+        // Dart-Eingabe zurücksetzen für nächsten Wurf
+        window.darts = [0, 0, 0];
+        window.dartMultipliers = [1, 1, 1];
+        window.currentDartIndex = 0;
+
+        // Reset Multiplier-Button Highlights
+        app.querySelectorAll('.mult-btn').forEach(btn => {
+          const mult = parseInt(btn.getAttribute('data-mult'));
+          if (mult === 1) {
+            btn.classList.add('ring-2', 'ring-white', 'ring-offset-2');
+          } else {
+            btn.classList.remove('ring-2', 'ring-white', 'ring-offset-2');
+          }
+        });
+
+        updateDartDisplays();
+        submitScoreBtn.textContent = 'Weiter →';
+
         // Leg/Set-Ende prüfen und automatisch behandeln
         if (window.localRemainingP1 === 0 || window.localRemainingP2 === 0) {
-          // Leg automatisch beenden
-          console.log('[Bullseyer] Leg beendet - automatischer Übergang ins nächste Leg (Ziffernblock)');
-          
-          // Leg in Datenbank speichern
-          if (currentMatch && currentLeg) {
-            try {
-              await saveLeg(currentMatch, currentLeg, window.localSetNo, window.localLegNo, window.localRemainingP1, false);
-              console.log('[Bullseyer] Leg automatisch gespeichert (Ziffernblock)');
-            } catch (error) {
-              console.error('[Bullseyer] Fehler beim Speichern des Legs:', error);
-            }
-          }
-          
-          // Bestimme den Gewinner des Legs
-          const legWinner = window.localRemainingP1 === 0 ? 'p1' : 'p2';
-          
-          // Erhöhe Leg-Zähler für den Gewinner
-          if (legWinner === 'p1') {
-            window.localLegsWon.p1++;
-          } else {
-            window.localLegsWon.p2++;
-          }
-          
-          // Prüfe, ob Set gewonnen
-          const bestLeg = window._lastRenderArgs?.bestLeg || 3;
-          const setWon = window.localLegsWon.p1 >= bestLeg || window.localLegsWon.p2 >= bestLeg;
-          
-          if (setWon) {
-            // Set gewonnen - Erhöhe Set-Zähler und Reset für neues Set
-            if (window.localLegsWon.p1 >= bestLeg) {
-              window.localSetsWon.p1++;
-            } else {
-              window.localSetsWon.p2++;
-            }
-            console.log('[Bullseyer] Set automatisch gewonnen durch', legWinner, '(Ziffernblock)');
-            window.localSetNo++;
-            window.localLegNo = 1;
-            window.localLegsWon = { p1: 0, p2: 0 }; // Reset Legs für neues Set
-          } else {
-            // Nur Leg gewonnen - nächstes Leg
-            window.localLegNo++;
-          }
-          
-          // Globale Variablen für neues Leg zurücksetzen
-          window.localRemainingP1 = 501;
-          window.localRemainingP2 = 501;
-          
-          // Startspieler für nächstes Leg wechseln
-          window.localLegStarter = window.localLegStarter === 'p1' ? 'p2' : 'p1';
-          window.localCurrentPlayer = window.localLegStarter;
-          
-          window.throwHistory = []; // Nur aktuelles Leg zurücksetzen
-          // allMatchThrows bleibt erhalten für Match-Average
-          window.localBullfinish = false;
-          window.localLegSaved = true; // Leg ist gespeichert
-          
-          console.log('[Bullseyer] Neues Leg automatisch gestartet (Ziffernblock) - Leg', window.localLegNo, 'Set', window.localSetNo, 'Starter:', window.localLegStarter);
-          
-          // Erstelle neues Leg für die Datenbank
-          const newLeg = resetLeg(currentMatch, window.localSetNo, window.localLegNo);
-          window._lastRenderArgs.currentLeg = newLeg;
-          
-          // UI aktualisieren
-          if (typeof window.syncLocalVars === 'function') {
-            window.syncLocalVars();
-          }
-          if (typeof window.updateSetsLegsUI === 'function') {
-            window.updateSetsLegsUI();
-          }
-          
-          // Score Display zurücksetzen
-          scoreDisplay.textContent = '0';
-          
-          // UI für neues Leg neu rendern
-          setTimeout(() => {
-            if (typeof window.renderLiveScorer === 'function') {
-              window.renderLiveScorer(window._lastRenderArgs);
-            }
-          }, 100);
-          
-          return; // Beende hier, da Leg automatisch beendet wurde
+          const matchEnded = await handleLegEnd('3-Dart-Eingabe');
+          if (matchEnded) return; // Match beendet - nicht weiter ausführen
+          return; // Leg beendet - nicht weiter ausführen
         }
         
         updateState({
@@ -1181,6 +1658,7 @@ export function renderLiveScorer({
       });
       // Average nach Undo aktualisieren
       updateAverages(throwHistory);
+      if (window.updateDetailedStats) window.updateDetailedStats();
       updateRestpunkteUI();
       updateSetsLegsUI();
       console.log('[Bullseyer] Render-Call nach Undo:', {
@@ -1218,6 +1696,24 @@ export function renderLiveScorer({
     undoBtn.addEventListener('click', handleUndo);
   }
 
+  // Toggle Stats Button
+  const toggleStatsBtn = app.querySelector('#toggleStats');
+  if (toggleStatsBtn) {
+    toggleStatsBtn.addEventListener('click', () => {
+      const statsDetails = app.querySelector('#statsDetails');
+      const toggleText = app.querySelector('#toggleStatsText');
+
+      if (statsDetails && toggleText) {
+        if (statsDetails.classList.contains('hidden')) {
+          statsDetails.classList.remove('hidden');
+          toggleText.textContent = 'Details ▲';
+        } else {
+          statsDetails.classList.add('hidden');
+          toggleText.textContent = 'Details ▼';
+        }
+      }
+    });
+  }
 
   // Zurück-Button
   if (backBtn) {
@@ -1276,6 +1772,220 @@ export function resetLeg(currentMatch, currentSetNo, currentLegNo) {
     }
   })();
   return currentLeg;
+}
+
+// Prüft, ob das Match gewonnen wurde (z.B. Best-of-3-Sets: 2 Sets gewonnen)
+function checkMatchEnd(setsWon, bestSet) {
+  const setsToWin = Math.ceil(bestSet / 2);
+  if (setsWon.p1 >= setsToWin) return 'p1';
+  if (setsWon.p2 >= setsToWin) return 'p2';
+  return null;
+}
+
+// Beendet das Match: Datenbank-Update, Stats speichern, UI anzeigen
+async function finishMatch(currentMatch, winner, setsWon, allMatchThrows) {
+  const winnerId = winner === 'p1' ? currentMatch.p1_id : currentMatch.p2_id;
+
+  console.log('[Bullseyer] Match beendet! Gewinner:', winner, 'Winner-ID:', winnerId);
+
+  try {
+    // 1. Match als beendet markieren
+    const { error: matchError } = await supabase.from('matches').update({
+      finished_at: new Date().toISOString(),
+      winner_id: winnerId
+    }).eq('id', currentMatch.id);
+
+    if (matchError) {
+      console.error('[Bullseyer] Fehler beim Match-Update:', matchError);
+      alert('Fehler beim Speichern des Match-Endes: ' + matchError.message);
+      return false;
+    }
+
+    // 2. Season-Stats aktualisieren
+    await updateMatchStats(currentMatch, winner, setsWon, allMatchThrows);
+
+    // 3. Match aus localStorage entfernen
+    localStorage.removeItem('bullseyer_currentMatchId');
+
+    // 4. Match-End-Screen anzeigen
+    showMatchEndScreen(currentMatch, winner, setsWon, allMatchThrows);
+
+    return true;
+  } catch (err) {
+    console.error('[Bullseyer] Fehler beim Match-Abschluss:', err);
+    alert('Fehler beim Beenden des Matches: ' + (err.message || err));
+    return false;
+  }
+}
+
+// Aktualisiert die Season-Stats für beide Spieler nach Match-Ende
+async function updateMatchStats(currentMatch, winner, setsWon, allMatchThrows) {
+  for (const player of ['p1', 'p2']) {
+    const playerId = player === 'p1' ? currentMatch.p1_id : currentMatch.p2_id;
+    const playerThrows = allMatchThrows.filter(t => t.player === player);
+
+    // Berechnungen
+    const totalScore = playerThrows.reduce((sum, t) => sum + t.score, 0);
+    const avg3 = playerThrows.length ? (totalScore / playerThrows.length) : 0;
+    const _180s = playerThrows.filter(t => t.score === 180).length;
+    const _140s = playerThrows.filter(t => t.score >= 140 && t.score < 180).length;
+    const _100s = playerThrows.filter(t => t.score >= 100 && t.score < 140).length;
+
+    const matchWon = (player === winner) ? 1 : 0;
+    const setsWonCount = player === 'p1' ? setsWon.p1 : setsWon.p2;
+
+    try {
+      // Hole bestehende Stats
+      const { data, error } = await supabase
+        .from('stats_season')
+        .select('*')
+        .eq('player_id', playerId)
+        .single();
+
+      const stats = data || {
+        player_id: playerId,
+        avg3: 0,
+        legs_won: 0,
+        sets_won: 0,
+        matches_played: 0,
+        matches_won: 0,
+        high_finish: 0,
+        bull_finishes: 0,
+        short_games: 0,
+        _180s: 0,
+        _140s: 0,
+        _100s: 0
+      };
+
+      // Update Stats
+      stats.matches_played = (stats.matches_played || 0) + 1;
+      stats.matches_won = (stats.matches_won || 0) + matchWon;
+      stats.sets_won = (stats.sets_won || 0) + setsWonCount;
+      stats._180s = (stats._180s || 0) + _180s;
+      stats._140s = (stats._140s || 0) + _140s;
+      stats._100s = (stats._100s || 0) + _100s;
+
+      // Average als laufender Durchschnitt
+      const prevAvg = stats.avg3 || 0;
+      const prevMatches = (stats.matches_played || 1) - 1;
+      stats.avg3 = prevMatches > 0
+        ? ((prevAvg * prevMatches) + avg3) / (prevMatches + 1)
+        : avg3;
+
+      // Upsert
+      await supabase.from('stats_season').upsert(stats, { onConflict: 'player_id' });
+
+      console.log('[Bullseyer] Stats aktualisiert für Spieler', playerId, stats);
+    } catch (err) {
+      console.error('[Bullseyer] Fehler beim Stats-Update für', playerId, err);
+    }
+  }
+}
+
+// Zeigt den Match-End-Screen an
+function showMatchEndScreen(currentMatch, winner, setsWon, allMatchThrows) {
+  const app = document.getElementById('app');
+  if (!app) return;
+
+  const winnerName = winner === 'p1' ? currentMatch.p1_name : currentMatch.p2_name;
+  const loserName = winner === 'p1' ? currentMatch.p2_name : currentMatch.p1_name;
+  const winnerColor = winner === 'p1' ? 'emerald' : 'rose';
+
+  // Match-Stats berechnen
+  const p1Throws = allMatchThrows.filter(t => t.player === 'p1');
+  const p2Throws = allMatchThrows.filter(t => t.player === 'p2');
+
+  const p1Avg = p1Throws.length ? (p1Throws.reduce((s, t) => s + t.score, 0) / p1Throws.length).toFixed(2) : '0.00';
+  const p2Avg = p2Throws.length ? (p2Throws.reduce((s, t) => s + t.score, 0) / p2Throws.length).toFixed(2) : '0.00';
+
+  const p1_180s = p1Throws.filter(t => t.score === 180).length;
+  const p2_180s = p2Throws.filter(t => t.score === 180).length;
+
+  const p1_140s = p1Throws.filter(t => t.score >= 140).length;
+  const p2_140s = p2Throws.filter(t => t.score >= 140).length;
+
+  const p1HighScore = p1Throws.length ? Math.max(...p1Throws.map(t => t.score)) : 0;
+  const p2HighScore = p2Throws.length ? Math.max(...p2Throws.map(t => t.score)) : 0;
+
+  const p1Darts = p1Throws.length * 3; // Annahme: jeder Throw = 3 Darts
+  const p2Darts = p2Throws.length * 3;
+
+  app.innerHTML = `
+    <div class="max-w-4xl mx-auto mt-8 p-8 bg-gradient-to-br from-${winnerColor}-50 via-white to-${winnerColor}-50 rounded-2xl shadow-2xl border-4 border-${winnerColor}-400">
+      <!-- Gewinner-Banner -->
+      <div class="text-center mb-8 p-6 bg-gradient-to-r from-amber-400 to-yellow-400 rounded-xl shadow-lg">
+        <div class="text-5xl mb-3">🏆</div>
+        <h1 class="text-5xl font-bold text-gray-900 mb-3">${winnerName}</h1>
+        <p class="text-3xl font-semibold text-gray-800">gewinnt das Match!</p>
+        <p class="text-2xl font-bold text-gray-700 mt-2">${setsWon.p1} : ${setsWon.p2} Sets</p>
+      </div>
+
+      <!-- Statistiken-Tabelle -->
+      <div class="bg-white rounded-xl p-6 mb-6 shadow-xl border-2 border-gray-200">
+        <h2 class="text-3xl font-bold mb-6 text-center text-gray-800">Match-Statistiken</h2>
+        <div class="grid grid-cols-3 gap-6">
+          <!-- Header -->
+          <div class="text-center font-bold text-xl text-emerald-700 pb-3 border-b-2 border-emerald-300">${currentMatch.p1_name}</div>
+          <div class="text-center font-bold text-xl text-gray-600 pb-3 border-b-2 border-gray-300">Statistik</div>
+          <div class="text-center font-bold text-xl text-rose-700 pb-3 border-b-2 border-rose-300">${currentMatch.p2_name}</div>
+
+          <!-- Sets -->
+          <div class="text-center text-3xl font-bold text-emerald-600">${setsWon.p1}</div>
+          <div class="text-center text-lg font-semibold text-gray-600">Sets gewonnen</div>
+          <div class="text-center text-3xl font-bold text-rose-600">${setsWon.p2}</div>
+
+          <!-- 3-Dart Average -->
+          <div class="text-center text-2xl font-bold text-emerald-700">${p1Avg}</div>
+          <div class="text-center text-lg font-semibold text-gray-600">Ø 3-Dart</div>
+          <div class="text-center text-2xl font-bold text-rose-700">${p2Avg}</div>
+
+          <!-- Höchster Score -->
+          <div class="text-center text-2xl font-bold ${p1HighScore === 180 ? 'text-amber-600' : 'text-emerald-600'}">${p1HighScore}</div>
+          <div class="text-center text-lg font-semibold text-gray-600">Höchster Score</div>
+          <div class="text-center text-2xl font-bold ${p2HighScore === 180 ? 'text-amber-600' : 'text-rose-600'}">${p2HighScore}</div>
+
+          <!-- 180s -->
+          <div class="text-center text-2xl font-bold ${p1_180s > 0 ? 'text-amber-600' : 'text-gray-400'}">${p1_180s}</div>
+          <div class="text-center text-lg font-semibold text-gray-600">180er</div>
+          <div class="text-center text-2xl font-bold ${p2_180s > 0 ? 'text-amber-600' : 'text-gray-400'}">${p2_180s}</div>
+
+          <!-- 140+ -->
+          <div class="text-center text-xl font-bold text-emerald-600">${p1_140s}</div>
+          <div class="text-center text-lg font-semibold text-gray-600">140+ Scores</div>
+          <div class="text-center text-xl font-bold text-rose-600">${p2_140s}</div>
+
+          <!-- Darts geworfen -->
+          <div class="text-center text-lg font-semibold text-gray-700">${p1Darts}</div>
+          <div class="text-center text-lg font-semibold text-gray-600">Darts geworfen</div>
+          <div class="text-center text-lg font-semibold text-gray-700">${p2Darts}</div>
+        </div>
+      </div>
+
+      <!-- Buttons -->
+      <div class="flex gap-6 justify-center">
+        <button id="backToDashboard" class="bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white px-8 py-4 rounded-xl font-bold text-lg shadow-lg transition-all transform hover:scale-105">
+          ← Dashboard
+        </button>
+        <button id="exportMatch" class="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white px-8 py-4 rounded-xl font-bold text-lg shadow-lg transition-all transform hover:scale-105">
+          📊 Export
+        </button>
+      </div>
+    </div>
+  `;
+
+  // Event-Handler
+  document.getElementById('backToDashboard').onclick = () => {
+    window.location.hash = '#/dashboard';
+  };
+
+  document.getElementById('exportMatch').onclick = () => {
+    alert('Export-Funktion wird in Phase 4 implementiert');
+    // TODO: Export-Funktion aufrufen
+  };
+
+  // Header-Logo wieder einblenden
+  const mainHeader = document.getElementById('mainHeader');
+  if (mainHeader) mainHeader.style.display = 'block';
 }
 
 // Statistiken nach Leg-Ende aktualisieren (stats_season)

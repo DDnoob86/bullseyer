@@ -1,5 +1,6 @@
 import { login, signUp, logout } from './auth.js';
-import { supabase } from './supabase.js';
+// ⚠️ MOCK-MODUS FÜR TESTS - Ändere zu './supabase.js' für echtes Backend
+import { supabase } from './supabase-mock.js';
 import { generateRoundRobin } from './pairing.js';
 import { Leg } from './scorer.js';
 import { exportGameDay } from './export.js';
@@ -7,24 +8,40 @@ import { renderLiveScorer, resetLeg } from './livescoring.js';
 
 const DEV = true;
 
-// Auth-Listener aktivieren
+// ⚠️ MOCK-MODUS: AUTO-LOGIN FÜR TESTS (überspringt Login-Page)
+// Kommentar diese Zeilen aus, wenn du echtes Login willst
+(async function autoLoginForTesting() {
+  console.log('🧪 MOCK-MODUS: Auto-Login als Demo-User...');
+  const demoUser = { id: 'demo-user-id', email: 'demo@test.com' };
+  localStorage.setItem('mock_currentUser', JSON.stringify(demoUser));
+
+  // Simuliere SIGNED_IN Event nach kurzer Verzögerung
+  setTimeout(() => {
+    if (!window.location.hash || window.location.hash === '#/login') {
+      window.location.hash = '#/dashboard';
+    }
+  }, 100);
+})();
+
+// Auth-Listener aktivieren (wird im Mock-Modus nicht verwendet)
 supabase.auth.onAuthStateChange((event, session) => {
-  if (event === 'SIGNED_IN')  window.location.hash = '#/dashboard';
-  if (event === 'SIGNED_OUT') window.location.hash = '#/login';
+  // Im Mock-Modus deaktiviert
+  // if (event === 'SIGNED_IN')  window.location.hash = '#/dashboard';
+  // if (event === 'SIGNED_OUT') window.location.hash = '#/login';
 });
 
 // -----------------------------
 // Mini-Router (#/login, #/dashboard, #/scorer, #/stats, #/livescorer)
 // -----------------------------
 window.onhashchange = () => {
-  const page = window.location.hash || '#/login';
-  if (page.startsWith('#/login'))      renderLogin();
-  else if (page.startsWith('#/register')) renderRegister();
+  const page = window.location.hash || '#/dashboard'; // ⚠️ MOCK: Direkt zu Dashboard statt Login
+  if (page.startsWith('#/login'))      window.location.hash = '#/dashboard'; // ⚠️ MOCK: Login umleiten
+  else if (page.startsWith('#/register')) window.location.hash = '#/dashboard'; // ⚠️ MOCK: Register umleiten
   else if (page.startsWith('#/dashboard')) renderDashboard();
   else if (page.startsWith('#/scorer'))   renderScorer();
   else if (page.startsWith('#/livescorer')) renderScorer(); // Livescorer zeigt das Live-Scoring
   else if (page.startsWith('#/stats'))    renderStats();
-  else renderLogin();
+  else renderDashboard(); // ⚠️ MOCK: Default zu Dashboard
 };
 
 // Sofort aufrufen
@@ -36,12 +53,17 @@ window.onhashchange();
 function renderLogin() {
   const app = document.getElementById('app');
   app.innerHTML = `
-    <form id="loginForm" class="max-w-sm mx-auto flex flex-col gap-4 mt-8">
-      <input name="email" type="email" placeholder="E-Mail" class="input" required />
-      <input name="pw" type="password" placeholder="Passwort" class="input" required />
-      <button class="btn">Login</button>
-      <p class="text-sm text-center">Noch kein Konto? <a href="#/register">Registrieren</a></p>
-    </form>`;
+    <div class="max-w-sm mx-auto mt-8">
+      <div class="bg-yellow-100 border-2 border-yellow-400 rounded p-3 mb-4 text-sm">
+        🧪 <strong>MOCK-MODUS:</strong> Login mit beliebigem Namen (z.B. "Alice")
+      </div>
+      <form id="loginForm" class="flex flex-col gap-4">
+        <input name="email" type="text" placeholder="Name (z.B. Alice, Bob, Charlie, Diana)" class="input" required />
+        <input name="pw" type="password" placeholder="Passwort (egal)" class="input" required />
+        <button class="btn">Login</button>
+        <p class="text-sm text-center">Noch kein Konto? <a href="#/register">Registrieren</a></p>
+      </form>
+    </div>`;
   document.getElementById('loginForm').onsubmit = async e => {
     e.preventDefault();
     const { email, pw: password } = e.target.elements;
@@ -57,12 +79,18 @@ function renderLogin() {
 function renderRegister() {
   const app = document.getElementById('app');
   app.innerHTML = `
-    <form id="regForm" class="max-w-sm mx-auto flex flex-col gap-4 mt-8">
-      <input name="name" type="text" placeholder="Anzeigename" class="input" required />
-      <input name="email" type="email" placeholder="E-Mail" class="input" required />
-      <input name="pw" type="password" placeholder="Passwort" class="input" required />
-      <button class="btn">Konto erstellen</button>
-    </form>`;
+    <div class="max-w-sm mx-auto mt-8">
+      <div class="bg-yellow-100 border-2 border-yellow-400 rounded p-3 mb-4 text-sm">
+        🧪 <strong>MOCK-MODUS:</strong> Erstelle einen Account mit beliebigem Namen
+      </div>
+      <form id="regForm" class="flex flex-col gap-4">
+        <input name="name" type="text" placeholder="Spielername (z.B. Max)" class="input" required />
+        <input name="email" type="text" placeholder="Name nochmal (egal)" class="input" required />
+        <input name="pw" type="password" placeholder="Passwort (egal)" class="input" required />
+        <button class="btn">Konto erstellen</button>
+        <p class="text-sm text-center"><a href="#/login">Zurück zum Login</a></p>
+      </form>
+    </div>`;
   document.getElementById('regForm').onsubmit = async e => {
     e.preventDefault();
     const { name, email, pw: password } = e.target.elements;
@@ -167,30 +195,90 @@ async function renderDashboard() {
 
   // 4) Formular anzeigen (offene Spiele werden jetzt UNTER dem Button angezeigt)
   app.innerHTML = `
-    <div class="relative">
-      <button id="logoutBtn3" class="absolute top-4 right-4">Logout</button>
-      <h2 class="text-2xl text-center mt-8">Spieltag konfigurieren</h2>
-    </div>
-    <form id="cfgForm" class="max-w-md mx-auto mt-6 space-y-4">
-      <div>
-        <label class="block mb-1">Best of Sets</label>
-        <input name="boSets" type="number" min="1" max="21" value="3" class="input w-full" />
+    <div class="max-w-6xl mx-auto p-6">
+      <!-- Header -->
+      <div class="flex justify-between items-center mb-8">
+        <h1 class="text-4xl font-bold text-gray-800">🎯 Bullseyer Dashboard</h1>
+        <button id="logoutBtn3" class="bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white px-6 py-3 rounded-xl font-semibold shadow-lg transition-all transform hover:scale-105">Logout</button>
       </div>
-      <div>
-        <label class="block mb-1">Best of Legs</label>
-        <input name="boLegs" type="number" min="1" max="11" value="3" class="input w-full" />
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Offene Matches (links) -->
+        <div class="lg:col-span-1">
+          <div class="bg-white rounded-xl shadow-xl border-4 border-emerald-400 p-6">
+            <h2 class="text-2xl font-bold text-emerald-800 mb-4 flex items-center gap-2">
+              <span>🎲</span> Offene Matches
+            </h2>
+            ${(openMatches && openMatches.length) ? `
+              <div class="space-y-3 mb-4">
+                ${openMatches.map(m => `
+                  <div class="bg-gradient-to-r from-emerald-50 to-emerald-100 border-2 border-emerald-300 rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <div class="flex justify-between items-center">
+                      <div>
+                        <div class="font-semibold text-gray-800">${m.p1?.name || '?'} <span class="text-emerald-600">vs</span> ${m.p2?.name || '?'}</div>
+                        <div class="text-xs text-gray-600 mt-1">${m.gameday?.date || ''}</div>
+                      </div>
+                      <div class="bg-emerald-600 text-white px-3 py-1 rounded-full text-sm font-bold">Board ${m.board}</div>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+              <button id="gotoScorerBtn" class="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white px-4 py-3 rounded-xl font-bold shadow-lg transition-all transform hover:scale-105">
+                Matches starten →
+              </button>
+            ` : '<div class="text-center text-gray-400 py-8">Keine offenen Matches</div>'}
+          </div>
+        </div>
+
+        <!-- Spieltag konfigurieren (rechts) -->
+    <form id="cfgForm" class="lg:col-span-2">
+      <div class="bg-white rounded-xl shadow-xl border-4 border-rose-400 p-6">
+        <h2 class="text-2xl font-bold text-rose-800 mb-6 flex items-center gap-2">
+          <span>⚙️</span> Neuer Spieltag
+        </h2>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+          <div>
+            <label class="block mb-2 text-sm font-semibold text-gray-700">Best of Sets</label>
+            <input name="boSets" type="number" min="1" max="21" value="3" class="w-full px-4 py-3 border-2 border-rose-300 rounded-lg focus:border-rose-500 focus:ring-2 focus:ring-rose-200 transition text-lg font-semibold" />
+          </div>
+          <div>
+            <label class="block mb-2 text-sm font-semibold text-gray-700">Best of Legs</label>
+            <input name="boLegs" type="number" min="1" max="11" value="3" class="w-full px-4 py-3 border-2 border-rose-300 rounded-lg focus:border-rose-500 focus:ring-2 focus:ring-rose-200 transition text-lg font-semibold" />
+          </div>
+        </div>
+
+        <div class="mb-6">
+          <label class="flex items-center gap-3 cursor-pointer bg-rose-50 border-2 border-rose-300 rounded-lg p-4 hover:bg-rose-100 transition">
+            <input name="doubleOut" type="checkbox" class="w-5 h-5 text-rose-600 border-2 border-rose-400 rounded focus:ring-2 focus:ring-rose-200" checked />
+            <span class="text-gray-800 font-semibold">Double Out aktivieren</span>
+          </label>
+        </div>
+        <div class="mb-6">
+          <label class="block mb-2 text-sm font-semibold text-gray-700">Anzahl Boards</label>
+          <select name="numBoards" class="w-full px-4 py-3 border-2 border-rose-300 rounded-lg focus:border-rose-500 focus:ring-2 focus:ring-rose-200 transition text-lg font-semibold bg-white">
+            <option value="1">1 Board</option>
+            <option value="2">2 Boards</option>
+            <option value="3">3 Boards</option>
+            <option value="4">4 Boards</option>
+            <option value="6">6 Boards</option>
+            <option value="8">8 Boards</option>
+          </select>
+          <p class="text-xs text-gray-500 mt-2">Matches werden gleichmäßig auf Boards verteilt</p>
+        </div>
+
+        <div class="mb-6">
+          <h3 class="text-lg font-bold text-gray-800 mb-3">Spieler auswählen</h3>
+          <div id="playerList" class="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-64 overflow-y-auto p-4 bg-gradient-to-br from-gray-50 to-gray-100 border-2 border-gray-300 rounded-lg"></div>
+          <p class="text-xs text-gray-500 mt-2">💡 Anklicken zum Auswählen (wird blau)</p>
+        </div>
+
+        <button type="submit" class="w-full bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-700 hover:to-rose-800 text-white px-6 py-4 rounded-xl font-bold text-lg shadow-lg transition-all transform hover:scale-105">
+          🎯 Spieltag starten
+        </button>
       </div>
-      <div>
-        <label class="block mb-1">Double Out</label>
-        <input name="doubleOut" type="checkbox" class="mr-2 align-middle" checked /> Double out nötig
-      </div>
-      <h3 class="text-lg mt-6 mb-2">Spieler (blau&nbsp;= gewählt)</h3>
-      <div id="playerList" class="border rounded p-4 max-h-64 overflow-y-auto"></div>
-      <button class="bg-green-500 hover:bg-green-600 text-white rounded-full w-full py-2 transition">
-        Spieltag starten
-      </button>
     </form>
-    <div id="openMatches" class="mt-6 max-w-md mx-auto">${openMatchesHtml}</div>
+      </div>
+    </div>
   `;
 
   // Button-Handler: Wechselt zur Scorer-Seite (nach dem Render!)
@@ -212,15 +300,15 @@ async function renderDashboard() {
   players.forEach(p => {
     const div = document.createElement('div');
     div.textContent = p.name;
-    div.className = 'cursor-pointer text-2xl text-center my-2';
+    div.className = 'cursor-pointer text-center py-3 px-4 bg-white border-2 border-gray-300 rounded-lg hover:border-blue-400 hover:shadow-md transition font-semibold text-gray-800';
     div.onclick = () => {
       const id = p.id; // <-- KEIN Number()!
       if (selectedPlayers.has(id)) {
         selectedPlayers.delete(id);
-        div.classList.remove('text-blue-500');
+        div.classList.remove('text-blue-500', 'border-blue-600', 'bg-blue-50');
       } else {
         selectedPlayers.add(id);
-        div.classList.add('text-blue-500');
+        div.classList.add('text-blue-500', 'border-blue-600', 'bg-blue-50');
       }
     };
     playerListEl.appendChild(div); // <--- Das war vermutlich auch vergessen!
@@ -232,7 +320,7 @@ async function renderDashboard() {
     const submitBtn = e.target.querySelector('button[type="submit"], button:not([type])');
     const defaultBtnText = submitBtn ? submitBtn.textContent : '';
 
-    const { boSets, boLegs, doubleOut } = e.target.elements;
+    const { boSets, boLegs, doubleOut, numBoards } = e.target.elements;
 
     if (selectedPlayers.size < 2) {
       if (submitBtn) {
@@ -331,23 +419,33 @@ async function renderDashboard() {
       return;
     }
 
+    const boards = parseInt(numBoards.value, 10) || 1;
+
+    const matchesToInsert = validPairings.map(([p1, p2], i) => {
+      const [a, b] = [p1, p2].sort(); // IDs sortieren für pair_key
+      // Verteile Matches gleichmäßig auf Boards (Round-Robin)
+      const boardNum = (i % boards) + 1;
+      return {
+        gameday_id: gd.id,
+        p1_id: p1,
+        p2_id: p2,
+        best_of_sets: boS,
+        best_of_legs: boL,
+        double_out: doubleOut.checked,
+        board: boardNum, // Dynamische Board-Zuweisung
+        pair_key: `${a}:${b}`, // NEU: Eindeutige Paarung pro Spieltag
+        finished_at: null, // Explizit auf null setzen für offene Matches
+        winner_id: null
+      };
+    });
+
+    console.log('[DEBUG] Creating matches:', matchesToInsert);
+    console.log('[DEBUG] Gameday ID:', gd.id);
+    console.log('[DEBUG] Number of boards:', boards);
+
     const { error: matchErr } = await supabase
       .from('matches')
-      .insert(
-        validPairings.map(([p1, p2], i) => {
-          const [a, b] = [p1, p2].sort(); // IDs sortieren für pair_key
-          return {
-            gameday_id: gd.id,
-            p1_id: p1,
-            p2_id: p2,
-            best_of_sets: boS,
-            best_of_legs: boL,
-            double_out: doubleOut.checked,
-            board: 1, // <-- Alle auf Board 1!
-            pair_key: `${a}:${b}` // NEU: Eindeutige Paarung pro Spieltag
-          };
-        })
-      );
+      .insert(matchesToInsert);
     if (matchErr) {
       if (submitBtn) {
         // Prüfe auf Unique-Fehler (doppelte Paarung)
@@ -591,12 +689,29 @@ function startMatch(m) {
 // Datenbank-Helper
 // --------------------------------------------------
 async function fetchBoardsForToday() {
-  // Immer nur Board 1 zurückgeben, da alle Matches auf Board 1 angelegt werden
-  return ['1'];
+  // Hole alle Boards mit offenen Matches vom heutigen Spieltag
+  const { data, error } = await supabase
+    .from('matches')
+    .select('board')
+    .is('finished_at', null);
+
+  if (error) {
+    console.error('Fehler beim Laden der Boards:', error);
+    return ['1']; // Fallback
+  }
+
+  if (!data || data.length === 0) {
+    return ['1']; // Default: Board 1
+  }
+
+  // Extrahiere unique Boards und sortiere
+  const boards = [...new Set(data.map(m => String(m.board)))].sort((a, b) => Number(a) - Number(b));
+  return boards.length > 0 ? boards : ['1'];
 }
 
 // Holt offene Matches für ein Board, optional mit Datum
 async function fetchOpenMatches(board, withDate = false) {
+  console.log('[DEBUG] fetchOpenMatches called with board:', board, 'type:', typeof board);
   let selectStr = 'id, p1_id, p2_id, best_of_sets, best_of_legs, board, p1:users!matches_p1_id_fkey(name), p2:users!matches_p2_id_fkey(name)';
   if (withDate) selectStr += ', gameday:gamedays(date)';
   const { data, error } = await supabase
@@ -604,7 +719,16 @@ async function fetchOpenMatches(board, withDate = false) {
     .select(selectStr)
     .eq('board', Number(board)) // <-- Board als Zahl vergleichen!
     .is('finished_at', null);
-  console.log('fetchOpenMatches:', board, data, error); // Debug
+  console.log('[DEBUG] fetchOpenMatches result:', {
+    board,
+    dataCount: data?.length || 0,
+    data,
+    error
+  });
+  if (data?.length > 0) {
+    console.log('[DEBUG] First match:', data[0]);
+    console.log('[DEBUG] Player names:', data[0].p1, data[0].p2);
+  }
   return data || [];
 }
 
