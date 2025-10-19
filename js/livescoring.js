@@ -658,9 +658,9 @@ export function renderLiveScorer({
         <!-- Score-Eingabe Bereich: Ziffernblock und Quick-Scores nebeneinander -->
         <div class="flex gap-6 mb-6">
           <!-- Digitaler Ziffernblock für 3-Dart-Eingabe -->
-          <div class="p-6 bg-white rounded-xl border-4 border-gray-300 shadow-xl">
+          <div class="p-6 bg-white dark:bg-gray-800 rounded-xl border-4 border-gray-300 shadow-xl">
             <div class="text-center mb-4">
-              <div class="text-xl font-bold text-gray-800 mb-3">3-Dart-Eingabe</div>
+              <div class="text-xl font-bold text-gray-800 dark:text-gray-200 mb-3">3-Dart-Eingabe</div>
               <div class="flex gap-3 justify-center mb-3">
                 <div class="flex flex-col items-center">
                   <div class="text-xs font-semibold text-gray-600 mb-2">DART 1</div>
@@ -695,17 +695,17 @@ export function renderLiveScorer({
 
             <!-- Ziffernblock -->
             <div class="grid grid-cols-3 gap-3 mb-4">
-              <button type="button" data-digit="1" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 hover:from-slate-200 hover:to-slate-300 border-2 border-slate-300 rounded-lg text-2xl font-bold py-4 px-5 shadow-md transition-all transform hover:scale-105">1</button>
-              <button type="button" data-digit="2" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 hover:from-slate-200 hover:to-slate-300 border-2 border-slate-300 rounded-lg text-2xl font-bold py-4 px-5 shadow-md transition-all transform hover:scale-105">2</button>
-              <button type="button" data-digit="3" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 hover:from-slate-200 hover:to-slate-300 border-2 border-slate-300 rounded-lg text-2xl font-bold py-4 px-5 shadow-md transition-all transform hover:scale-105">3</button>
-              <button type="button" data-digit="4" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 hover:from-slate-200 hover:to-slate-300 border-2 border-slate-300 rounded-lg text-2xl font-bold py-4 px-5 shadow-md transition-all transform hover:scale-105">4</button>
-              <button type="button" data-digit="5" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 hover:from-slate-200 hover:to-slate-300 border-2 border-slate-300 rounded-lg text-2xl font-bold py-4 px-5 shadow-md transition-all transform hover:scale-105">5</button>
-              <button type="button" data-digit="6" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 hover:from-slate-200 hover:to-slate-300 border-2 border-slate-300 rounded-lg text-2xl font-bold py-4 px-5 shadow-md transition-all transform hover:scale-105">6</button>
-              <button type="button" data-digit="7" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 hover:from-slate-200 hover:to-slate-300 border-2 border-slate-300 rounded-lg text-2xl font-bold py-4 px-5 shadow-md transition-all transform hover:scale-105">7</button>
-              <button type="button" data-digit="8" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 hover:from-slate-200 hover:to-slate-300 border-2 border-slate-300 rounded-lg text-2xl font-bold py-4 px-5 shadow-md transition-all transform hover:scale-105">8</button>
-              <button type="button" data-digit="9" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 hover:from-slate-200 hover:to-slate-300 border-2 border-slate-300 rounded-lg text-2xl font-bold py-4 px-5 shadow-md transition-all transform hover:scale-105">9</button>
+              <button type="button" data-digit="1" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-600 hover:from-slate-200 hover:to-slate-300 dark:hover:from-slate-600 dark:hover:to-slate-500 border-2 border-slate-300 dark:border-slate-500 rounded-lg text-2xl font-bold text-gray-900 dark:text-gray-100 py-4 px-5 shadow-md transition-all transform hover:scale-105">1</button>
+              <button type="button" data-digit="2" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-600 hover:from-slate-200 hover:to-slate-300 dark:hover:from-slate-600 dark:hover:to-slate-500 border-2 border-slate-300 dark:border-slate-500 rounded-lg text-2xl font-bold text-gray-900 dark:text-gray-100 py-4 px-5 shadow-md transition-all transform hover:scale-105">2</button>
+              <button type="button" data-digit="3" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-600 hover:from-slate-200 hover:to-slate-300 dark:hover:from-slate-600 dark:hover:to-slate-500 border-2 border-slate-300 dark:border-slate-500 rounded-lg text-2xl font-bold text-gray-900 dark:text-gray-100 py-4 px-5 shadow-md transition-all transform hover:scale-105">3</button>
+              <button type="button" data-digit="4" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-600 hover:from-slate-200 hover:to-slate-300 dark:hover:from-slate-600 dark:hover:to-slate-500 border-2 border-slate-300 dark:border-slate-500 rounded-lg text-2xl font-bold text-gray-900 dark:text-gray-100 py-4 px-5 shadow-md transition-all transform hover:scale-105">4</button>
+              <button type="button" data-digit="5" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-600 hover:from-slate-200 hover:to-slate-300 dark:hover:from-slate-600 dark:hover:to-slate-500 border-2 border-slate-300 dark:border-slate-500 rounded-lg text-2xl font-bold text-gray-900 dark:text-gray-100 py-4 px-5 shadow-md transition-all transform hover:scale-105">5</button>
+              <button type="button" data-digit="6" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-600 hover:from-slate-200 hover:to-slate-300 dark:hover:from-slate-600 dark:hover:to-slate-500 border-2 border-slate-300 dark:border-slate-500 rounded-lg text-2xl font-bold text-gray-900 dark:text-gray-100 py-4 px-5 shadow-md transition-all transform hover:scale-105">6</button>
+              <button type="button" data-digit="7" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-600 hover:from-slate-200 hover:to-slate-300 dark:hover:from-slate-600 dark:hover:to-slate-500 border-2 border-slate-300 dark:border-slate-500 rounded-lg text-2xl font-bold text-gray-900 dark:text-gray-100 py-4 px-5 shadow-md transition-all transform hover:scale-105">7</button>
+              <button type="button" data-digit="8" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-600 hover:from-slate-200 hover:to-slate-300 dark:hover:from-slate-600 dark:hover:to-slate-500 border-2 border-slate-300 dark:border-slate-500 rounded-lg text-2xl font-bold text-gray-900 dark:text-gray-100 py-4 px-5 shadow-md transition-all transform hover:scale-105">8</button>
+              <button type="button" data-digit="9" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-600 hover:from-slate-200 hover:to-slate-300 dark:hover:from-slate-600 dark:hover:to-slate-500 border-2 border-slate-300 dark:border-slate-500 rounded-lg text-2xl font-bold text-gray-900 dark:text-gray-100 py-4 px-5 shadow-md transition-all transform hover:scale-105">9</button>
               <button type="button" id="clearBtn" class="bg-gradient-to-br from-red-400 to-red-500 hover:from-red-500 hover:to-red-600 text-white border-2 border-red-600 rounded-lg text-xl font-bold py-4 px-5 shadow-md transition-all transform hover:scale-105">C</button>
-              <button type="button" data-digit="0" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 hover:from-slate-200 hover:to-slate-300 border-2 border-slate-300 rounded-lg text-2xl font-bold py-4 px-5 shadow-md transition-all transform hover:scale-105">0</button>
+              <button type="button" data-digit="0" class="keypad-btn bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-700 dark:to-slate-600 hover:from-slate-200 hover:to-slate-300 dark:hover:from-slate-600 dark:hover:to-slate-500 border-2 border-slate-300 dark:border-slate-500 rounded-lg text-2xl font-bold text-gray-900 dark:text-gray-100 py-4 px-5 shadow-md transition-all transform hover:scale-105">0</button>
               <button type="button" id="backspaceBtn" class="bg-gradient-to-br from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-white border-2 border-amber-600 rounded-lg text-xl font-bold py-4 px-5 shadow-md transition-all transform hover:scale-105">⌫</button>
             </div>
 
@@ -714,14 +714,14 @@ export function renderLiveScorer({
           </div>
           
           <!-- Quick-Score Auswahl -->
-          <div class="p-6 bg-white rounded-xl border-4 border-gray-300 shadow-xl">
+          <div class="p-6 bg-white dark:bg-gray-800 rounded-xl border-4 border-gray-300 shadow-xl">
             <div class="text-center mb-4">
-              <div class="text-xl font-bold text-gray-800">Schnellauswahl</div>
+              <div class="text-xl font-bold text-gray-800 dark:text-gray-200">Schnellauswahl</div>
             </div>
             <div id="quickScores" class="grid grid-cols-3 gap-3">
-              <button data-score="26" class="bg-gradient-to-br from-cyan-100 to-cyan-200 hover:from-cyan-200 hover:to-cyan-300 border-2 border-cyan-400 rounded-lg text-lg font-bold py-3 px-4 shadow-md transition-all transform hover:scale-105">26</button>
-              <button data-score="41" class="bg-gradient-to-br from-cyan-100 to-cyan-200 hover:from-cyan-200 hover:to-cyan-300 border-2 border-cyan-400 rounded-lg text-lg font-bold py-3 px-4 shadow-md transition-all transform hover:scale-105">41</button>
-              <button data-score="45" class="bg-gradient-to-br from-cyan-100 to-cyan-200 hover:from-cyan-200 hover:to-cyan-300 border-2 border-cyan-400 rounded-lg text-lg font-bold py-3 px-4 shadow-md transition-all transform hover:scale-105">45</button>
+              <button data-score="26" class="bg-gradient-to-br from-cyan-100 to-cyan-200 dark:from-cyan-700 dark:to-cyan-600 hover:from-cyan-200 hover:to-cyan-300 dark:hover:from-cyan-600 dark:hover:to-cyan-500 border-2 border-cyan-400 dark:border-cyan-500 rounded-lg text-lg font-bold text-gray-900 dark:text-gray-100 py-3 px-4 shadow-md transition-all transform hover:scale-105">26</button>
+              <button data-score="41" class="bg-gradient-to-br from-cyan-100 to-cyan-200 dark:from-cyan-700 dark:to-cyan-600 hover:from-cyan-200 hover:to-cyan-300 dark:hover:from-cyan-600 dark:hover:to-cyan-500 border-2 border-cyan-400 dark:border-cyan-500 rounded-lg text-lg font-bold text-gray-900 dark:text-gray-100 py-3 px-4 shadow-md transition-all transform hover:scale-105">41</button>
+              <button data-score="45" class="bg-gradient-to-br from-cyan-100 to-cyan-200 dark:from-cyan-700 dark:to-cyan-600 hover:from-cyan-200 hover:to-cyan-300 dark:hover:from-cyan-600 dark:hover:to-cyan-500 border-2 border-cyan-400 dark:border-cyan-500 rounded-lg text-lg font-bold text-gray-900 dark:text-gray-100 py-3 px-4 shadow-md transition-all transform hover:scale-105">45</button>
               <button data-score="60" class="bg-gradient-to-br from-sky-100 to-sky-200 hover:from-sky-200 hover:to-sky-300 border-2 border-sky-400 rounded-lg text-lg font-bold py-3 px-4 shadow-md transition-all transform hover:scale-105">60</button>
               <button data-score="81" class="bg-gradient-to-br from-sky-100 to-sky-200 hover:from-sky-200 hover:to-sky-300 border-2 border-sky-400 rounded-lg text-lg font-bold py-3 px-4 shadow-md transition-all transform hover:scale-105">81</button>
               <button data-score="83" class="bg-gradient-to-br from-sky-100 to-sky-200 hover:from-sky-200 hover:to-sky-300 border-2 border-sky-400 rounded-lg text-lg font-bold py-3 px-4 shadow-md transition-all transform hover:scale-105">83</button>
@@ -735,9 +735,9 @@ export function renderLiveScorer({
           </div>
 
           <!-- Action Buttons -->
-          <div class="p-6 bg-white rounded-xl border-4 border-gray-300 shadow-xl flex flex-col gap-4">
+          <div class="p-6 bg-white dark:bg-gray-800 rounded-xl border-4 border-gray-300 shadow-xl flex flex-col gap-4">
             <div class="text-center">
-              <div class="text-xl font-bold text-gray-800 mb-4">Aktionen</div>
+              <div class="text-xl font-bold text-gray-800 dark:text-gray-200 mb-4">Aktionen</div>
             </div>
             <button id="undoBtn" class="bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white px-6 py-4 rounded-xl font-bold text-lg shadow-lg transition-all transform hover:scale-105">⏪ Rückgängig</button>
           </div>
@@ -1910,19 +1910,41 @@ function showMatchEndScreen(currentMatch, winner, setsWon, allMatchThrows) {
   const p1Darts = p1Throws.length * 3; // Annahme: jeder Throw = 3 Darts
   const p2Darts = p2Throws.length * 3;
 
+  // Match-Daten für Export global speichern
+  window.bullseyerMatchExportData = {
+    matchId: currentMatch.id,
+    date: new Date().toISOString().slice(0, 10),
+    p1Name: currentMatch.p1_name,
+    p2Name: currentMatch.p2_name,
+    winner: winnerName,
+    setsP1: setsWon.p1,
+    setsP2: setsWon.p2,
+    p1Avg: p1Avg,
+    p2Avg: p2Avg,
+    p1_180s: p1_180s,
+    p2_180s: p2_180s,
+    p1_140s: p1_140s,
+    p2_140s: p2_140s,
+    p1HighScore: p1HighScore,
+    p2HighScore: p2HighScore,
+    p1Darts: p1Darts,
+    p2Darts: p2Darts,
+    allThrows: allMatchThrows
+  };
+
   app.innerHTML = `
     <div class="max-w-4xl mx-auto mt-8 p-8 bg-gradient-to-br from-${winnerColor}-50 via-white to-${winnerColor}-50 rounded-2xl shadow-2xl border-4 border-${winnerColor}-400">
       <!-- Gewinner-Banner -->
       <div class="text-center mb-8 p-6 bg-gradient-to-r from-amber-400 to-yellow-400 rounded-xl shadow-lg">
         <div class="text-5xl mb-3">🏆</div>
-        <h1 class="text-5xl font-bold text-gray-900 mb-3">${winnerName}</h1>
-        <p class="text-3xl font-semibold text-gray-800">gewinnt das Match!</p>
+        <h1 class="text-5xl font-bold text-gray-900 dark:text-gray-100 mb-3">${winnerName}</h1>
+        <p class="text-3xl font-semibold text-gray-800 dark:text-gray-200">gewinnt das Match!</p>
         <p class="text-2xl font-bold text-gray-700 mt-2">${setsWon.p1} : ${setsWon.p2} Sets</p>
       </div>
 
       <!-- Statistiken-Tabelle -->
-      <div class="bg-white rounded-xl p-6 mb-6 shadow-xl border-2 border-gray-200">
-        <h2 class="text-3xl font-bold mb-6 text-center text-gray-800">Match-Statistiken</h2>
+      <div class="bg-white dark:bg-gray-800 rounded-xl p-6 mb-6 shadow-xl border-2 border-gray-200">
+        <h2 class="text-3xl font-bold mb-6 text-center text-gray-800 dark:text-gray-200">Match-Statistiken</h2>
         <div class="grid grid-cols-3 gap-6">
           <!-- Header -->
           <div class="text-center font-bold text-xl text-emerald-700 pb-3 border-b-2 border-emerald-300">${currentMatch.p1_name}</div>
@@ -1979,13 +2001,56 @@ function showMatchEndScreen(currentMatch, winner, setsWon, allMatchThrows) {
   };
 
   document.getElementById('exportMatch').onclick = () => {
-    alert('Export-Funktion wird in Phase 4 implementiert');
-    // TODO: Export-Funktion aufrufen
+    exportMatchToCSV();
   };
 
   // Header-Logo wieder einblenden
   const mainHeader = document.getElementById('mainHeader');
   if (mainHeader) mainHeader.style.display = 'block';
+}
+
+// CSV Export Funktion für Match-Ende
+function exportMatchToCSV() {
+  const data = window.bullseyerMatchExportData;
+  if (!data) {
+    alert('Keine Match-Daten zum Exportieren verfügbar');
+    return;
+  }
+
+  // CSV Teil 1: Match-Zusammenfassung
+  let csv = '=== MATCH ZUSAMMENFASSUNG ===\n';
+  csv += 'Datum,Spieler 1,Spieler 2,Gewinner,Sets P1,Sets P2\n';
+  csv += `${data.date},${data.p1Name},${data.p2Name},${data.winner},${data.setsP1},${data.setsP2}\n\n`;
+
+  // CSV Teil 2: Statistiken
+  csv += '=== STATISTIKEN ===\n';
+  csv += `Statistik,${data.p1Name},${data.p2Name}\n`;
+  csv += `3-Dart Average,${data.p1Avg},${data.p2Avg}\n`;
+  csv += `180er,${data.p1_180s},${data.p2_180s}\n`;
+  csv += `140+ Scores,${data.p1_140s},${data.p2_140s}\n`;
+  csv += `Höchster Score,${data.p1HighScore},${data.p2HighScore}\n`;
+  csv += `Darts geworfen,${data.p1Darts},${data.p2Darts}\n\n`;
+
+  // CSV Teil 3: Alle Würfe
+  csv += '=== WURF-HISTORIE ===\n';
+  csv += 'Wurf Nr.,Spieler,Score,Set,Leg\n';
+  data.allThrows.forEach((t, i) => {
+    const playerName = t.player === 'p1' ? data.p1Name : data.p2Name;
+    csv += `${i + 1},${playerName},${t.score},${t.setNo || 1},${t.legNo || 1}\n`;
+  });
+
+  // Download
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  link.setAttribute('href', url);
+  link.setAttribute('download', `bullseyer_match_${data.p1Name}_vs_${data.p2Name}_${data.date}.csv`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  console.log('[Bullseyer] Match exportiert:', data);
 }
 
 // Statistiken nach Leg-Ende aktualisieren (stats_season)

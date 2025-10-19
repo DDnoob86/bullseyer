@@ -198,14 +198,14 @@ async function renderDashboard() {
     <div class="max-w-6xl mx-auto p-6">
       <!-- Header -->
       <div class="flex justify-between items-center mb-8">
-        <h1 class="text-4xl font-bold text-gray-800">🎯 Bullseyer Dashboard</h1>
+        <h1 class="text-4xl font-bold text-gray-800 dark:text-gray-200">🎯 Bullseyer Dashboard</h1>
         <button id="logoutBtn3" class="bg-gradient-to-r from-gray-600 to-gray-700 hover:from-gray-700 hover:to-gray-800 text-white px-6 py-3 rounded-xl font-semibold shadow-lg transition-all transform hover:scale-105">Logout</button>
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <!-- Offene Matches (links) -->
         <div class="lg:col-span-1">
-          <div class="bg-white rounded-xl shadow-xl border-4 border-emerald-400 p-6">
+          <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl border-4 border-emerald-400 p-6">
             <h2 class="text-2xl font-bold text-emerald-800 mb-4 flex items-center gap-2">
               <span>🎲</span> Offene Matches
             </h2>
@@ -215,7 +215,7 @@ async function renderDashboard() {
                   <div class="bg-gradient-to-r from-emerald-50 to-emerald-100 border-2 border-emerald-300 rounded-lg p-4 hover:shadow-md transition-shadow">
                     <div class="flex justify-between items-center">
                       <div>
-                        <div class="font-semibold text-gray-800">${m.p1?.name || '?'} <span class="text-emerald-600">vs</span> ${m.p2?.name || '?'}</div>
+                        <div class="font-semibold text-gray-800 dark:text-gray-200">${m.p1?.name || '?'} <span class="text-emerald-600">vs</span> ${m.p2?.name || '?'}</div>
                         <div class="text-xs text-gray-600 mt-1">${m.gameday?.date || ''}</div>
                       </div>
                       <div class="bg-emerald-600 text-white px-3 py-1 rounded-full text-sm font-bold">Board ${m.board}</div>
@@ -232,7 +232,7 @@ async function renderDashboard() {
 
         <!-- Spieltag konfigurieren (rechts) -->
     <form id="cfgForm" class="lg:col-span-2">
-      <div class="bg-white rounded-xl shadow-xl border-4 border-rose-400 p-6">
+      <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl border-4 border-rose-400 p-6">
         <h2 class="text-2xl font-bold text-rose-800 mb-6 flex items-center gap-2">
           <span>⚙️</span> Neuer Spieltag
         </h2>
@@ -248,9 +248,15 @@ async function renderDashboard() {
         </div>
 
         <div class="mb-6">
-          <label class="flex items-center gap-3 cursor-pointer bg-rose-50 border-2 border-rose-300 rounded-lg p-4 hover:bg-rose-100 transition">
-            <input name="doubleOut" type="checkbox" class="w-5 h-5 text-rose-600 border-2 border-rose-400 rounded focus:ring-2 focus:ring-rose-200" checked />
-            <span class="text-gray-800 font-semibold">Double Out aktivieren</span>
+          <label class="flex items-center gap-3 cursor-pointer bg-gradient-to-r from-rose-50 to-rose-100 dark:from-rose-900/20 dark:to-rose-800/20 border-2 border-rose-300 dark:border-rose-500 rounded-lg p-4 hover:shadow-lg hover:scale-[1.02] transition-all duration-200">
+            <input name="doubleOut" type="checkbox" class="w-6 h-6 text-rose-600 dark:text-rose-500 bg-white dark:bg-gray-700 border-2 border-rose-400 dark:border-rose-500 rounded focus:ring-2 focus:ring-rose-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 cursor-pointer" checked />
+            <div class="flex-1">
+              <span class="text-gray-900 dark:text-gray-100 font-bold text-lg">Double Out aktivieren</span>
+              <p class="text-xs text-rose-600 dark:text-rose-400 mt-1">Match muss mit Double beendet werden</p>
+            </div>
+            <svg class="w-6 h-6 text-rose-600 dark:text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
           </label>
         </div>
         <div class="mb-6">
@@ -267,7 +273,7 @@ async function renderDashboard() {
         </div>
 
         <div class="mb-6">
-          <h3 class="text-lg font-bold text-gray-800 mb-3">Spieler auswählen</h3>
+          <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200 mb-3">Spieler auswählen</h3>
           <div id="playerList" class="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-64 overflow-y-auto p-4 bg-gradient-to-br from-gray-50 to-gray-100 border-2 border-gray-300 rounded-lg"></div>
           <p class="text-xs text-gray-500 mt-2">💡 Anklicken zum Auswählen (wird blau)</p>
         </div>
@@ -300,19 +306,21 @@ async function renderDashboard() {
   players.forEach(p => {
     const div = document.createElement('div');
     div.textContent = p.name;
-    div.className = 'cursor-pointer text-center py-3 px-4 bg-white border-2 border-gray-300 rounded-lg hover:border-blue-400 hover:shadow-md transition font-semibold text-gray-800';
+    div.className = 'cursor-pointer text-center py-3 px-4 bg-white dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 rounded-lg hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-md transition-all duration-200 font-semibold text-gray-800 dark:text-gray-200';
     div.onclick = () => {
-      const id = p.id; // <-- KEIN Number()!
+      const id = p.id;
       if (selectedPlayers.has(id)) {
         selectedPlayers.delete(id);
-        div.classList.remove('text-blue-500', 'border-blue-600', 'bg-blue-50');
+        // Deselect: Zurück zu Standardfarben
+        div.className = 'cursor-pointer text-center py-3 px-4 bg-white dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 rounded-lg hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-md transition-all duration-200 font-semibold text-gray-800 dark:text-gray-200';
       } else {
         selectedPlayers.add(id);
-        div.classList.add('text-blue-500', 'border-blue-600', 'bg-blue-50');
+        // Select: Blau mit Ring und Glow
+        div.className = 'cursor-pointer text-center py-3 px-4 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/40 dark:to-blue-800/40 border-2 border-blue-600 dark:border-blue-500 rounded-lg hover:shadow-2xl transition-all duration-200 font-bold text-blue-700 dark:text-blue-300 ring-4 ring-blue-300 dark:ring-blue-500/50 shadow-xl scale-105';
       }
     };
-    playerListEl.appendChild(div); // <--- Das war vermutlich auch vergessen!
-  }); // <--- Diese schließende Klammer MUSS hier hin!
+    playerListEl.appendChild(div);
+  });
 
   // 5) Form-Submit → Spieltag & Matches anlegen
   document.getElementById('cfgForm').onsubmit = async e => {
@@ -506,19 +514,38 @@ async function renderScorer() {
     localStorage.setItem('bullseyer_board', currentBoard);
   }
 
-  // Board-Auswahl-Buttons
+  // Board-Auswahl-Buttons - Modernes Design
   app.innerHTML = `
-    <div class="max-w-sm mx-auto mt-8 space-y-4">
-      <div class="flex gap-2 justify-center mb-4">
-        ${boards.map(b => `
-          <button class="btn ${String(b) == String(currentBoard) ? 'bg-blue-600 text-white' : ''}" data-board="${b}">
-            Board ${b}
+    <div class="max-w-4xl mx-auto mt-6">
+      <!-- Header Card -->
+      <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl border-4 border-blue-400 p-6 mb-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-2xl font-bold text-blue-800 dark:text-blue-400 flex items-center gap-2">
+            <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+            </svg>
+            Match Auswahl
+          </h2>
+          <button id="backToDashboard" class="px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-semibold transition-all transform hover:scale-105 shadow-lg">
+            ← Dashboard
           </button>
-        `).join('')}
+        </div>
+
+        <!-- Board Selection -->
+        <div class="flex gap-3 justify-center flex-wrap">
+          ${boards.map(b => `
+            <button class="px-6 py-3 rounded-xl font-bold text-lg transition-all transform hover:scale-105 shadow-lg ${
+              String(b) == String(currentBoard)
+                ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white ring-4 ring-blue-300 dark:ring-blue-500'
+                : 'bg-gradient-to-r from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-600 text-gray-800 dark:text-gray-100 hover:from-gray-200 hover:to-gray-300 dark:hover:from-gray-600 dark:hover:to-gray-500'
+            }" data-board="${b}">
+              🎯 Board ${b}
+            </button>
+          `).join('')}
+        </div>
       </div>
-      <div class="flex justify-between items-center mb-4">
-        <button id="backToDashboard" class="btn btn-sm bg-gray-400 hover:bg-gray-500 text-white">← Zurück</button>
-      </div>
+
+      <!-- Match List -->
       <div id="scorerContent"></div>
     </div>
   `;
@@ -632,12 +659,52 @@ async function renderScorer() {
     scorerContent.innerHTML = '<p class="text-center mt-8">Kein offenes Match</p>';
     return;
   }
-  scorerContent.innerHTML = matches.map(m =>
-    `<button type="button" class="btn w-full mb-2 flex flex-col items-start bg-blue-200 text-blue-900 hover:bg-blue-300 border-blue-300 border-2 rounded-lg py-3 px-4 transition" data-mid="${m.id}">
-      <span class="font-semibold text-lg">${m.p1.name}&nbsp;vs&nbsp;${m.p2.name}</span>
-      <span class="text-xs text-blue-700">${m.gameday?.date || ''}</span>
-    </button>`
-  ).join('');
+  scorerContent.innerHTML = `
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      ${matches.map(m => `
+        <button type="button" class="group relative bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-2 border-blue-300 dark:border-blue-500 rounded-xl p-5 hover:shadow-2xl hover:scale-105 transition-all duration-300 text-left" data-mid="${m.id}">
+          <!-- Match Players -->
+          <div class="flex items-center justify-between mb-3">
+            <div class="flex-1">
+              <div class="text-xl font-bold text-blue-900 dark:text-blue-100 mb-1">
+                ${m.p1.name}
+                <span class="text-blue-600 dark:text-blue-400 mx-2">vs</span>
+                ${m.p2.name}
+              </div>
+              <div class="text-xs text-blue-700 dark:text-blue-300 flex items-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                </svg>
+                ${m.gameday?.date || ''}
+              </div>
+            </div>
+            <div class="ml-4">
+              <svg class="w-8 h-8 text-blue-600 dark:text-blue-400 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
+              </svg>
+            </div>
+          </div>
+
+          <!-- Match Info -->
+          <div class="flex gap-3 text-xs text-blue-600 dark:text-blue-400">
+            <span class="flex items-center gap-1">
+              <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"></path>
+                <path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"></path>
+              </svg>
+              Board ${currentBoard}
+            </span>
+            <span class="flex items-center gap-1">
+              <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"></path>
+              </svg>
+              Best of ${m.best_of_legs} Legs
+            </span>
+          </div>
+        </button>
+      `).join('')}
+    </div>
+  `;
   // Event-Delegation für Touch/Click: Nur noch click-Event (iPad/iOS Fix)
   let matchSelectLock = false;
   function handleMatchSelect(e) {
@@ -732,100 +799,198 @@ async function fetchOpenMatches(board, withDate = false) {
   return data || [];
 }
 
-function renderNav() {
-  const app = document.getElementById('app');
-  if (!app) return;
-  const nav = document.createElement('nav');
-  nav.className = 'flex justify-center gap-4 mb-4';
-  nav.innerHTML = `
-    <button id="navDashboard" class="btn">Dashboard</button>
-    <button id="navScorer" class="btn">Scorer</button>
-    <button id="navStats" class="btn">Statistik</button>
-  `;
-  app.parentNode.insertBefore(nav, app);
-  document.getElementById('navDashboard').onclick = () => window.location.hash = '#/dashboard';
-  document.getElementById('navScorer').onclick = () => window.location.hash = '#/scorer';
-  document.getElementById('navStats').onclick = () => window.location.hash = '#/stats';
-}
+// Navigation is now in the header (index.html)
+// function renderNav() {
+//   const app = document.getElementById('app');
+//   if (!app) return;
+//   const nav = document.createElement('nav');
+//   nav.className = 'flex justify-center gap-4 mb-4';
+//   nav.innerHTML = `
+//     <button id="navDashboard" class="btn">Dashboard</button>
+//     <button id="navScorer" class="btn">Scorer</button>
+//     <button id="navStats" class="btn">Statistik</button>
+//   `;
+//   app.parentNode.insertBefore(nav, app);
+//   document.getElementById('navDashboard').onclick = () => window.location.hash = '#/dashboard';
+//   document.getElementById('navScorer').onclick = () => window.location.hash = '#/scorer';
+//   document.getElementById('navStats').onclick = () => window.location.hash = '#/stats';
+// }
 
 function renderStats() {
   // NEU: Statistik aus Tabelle legs und throws
   document.getElementById('app').innerHTML = '<p class="text-center mt-8">Lade Statistik…</p>';
-  renderNav();
   loadStats();
 }
 
 async function loadStats() {
-  // Highscore (Wurf >= 101), Highfinish (180), Shortleg (<= 18 Darts)
-  let html = '<h2 class="text-2xl text-center mt-8">Statistik</h2>';
-  // Highscores
+  // Alle Daten laden
   const { data: throws, error: throwsErr } = await supabase
     .from('throws')
     .select('player_id, score')
     .gte('score', 101);
-  if (throwsErr) {
-    document.getElementById('app').innerHTML = '<p class="text-red-600 text-center mt-8">Fehler beim Laden der Highscores: ' + throwsErr.message + '</p>';
-    return;
-  }
-  // Highfinishes
+
   const { data: finishes, error: finishErr } = await supabase
     .from('throws')
     .select('player_id, score')
     .eq('score', 180);
-  if (finishErr) {
-    document.getElementById('app').innerHTML = '<p class="text-red-600 text-center mt-8">Fehler beim Laden der Highfinishes: ' + finishErr.message + '</p>';
-    return;
-  }
-  // Shortlegs (Legs mit <= 18 Darts)
+
   const { data: shortlegs, error: shortErr } = await supabase
     .from('legs')
     .select('winner_id, finish_darts')
     .lte('finish_darts', 18);
-  if (shortErr) {
-    document.getElementById('app').innerHTML = '<p class="text-red-600 text-center mt-8">Fehler beim Laden der Shortlegs: ' + shortErr.message + '</p>';
-    return;
-  }
-  // 3-Dart-Average pro Spieler berechnen
+
   const { data: allThrows, error: allThrowsErr } = await supabase
     .from('throws')
     .select('player_id, score');
-  if (allThrowsErr) {
-    document.getElementById('app').innerHTML = '<p class="text-red-600 text-center mt-8">Fehler beim Laden der Würfe: ' + allThrowsErr.message + '</p>';
-    return;
-  }
-  // Spieler laden
+
   const { data: players, error: playersErr } = await supabase
     .from('users')
     .select('id, name');
-  if (playersErr) {
-    document.getElementById('app').innerHTML = '<p class="text-red-600 text-center mt-8">Fehler beim Laden der Spieler: ' + playersErr.message + '</p>';
+
+  if (throwsErr || finishErr || shortErr || allThrowsErr || playersErr) {
+    document.getElementById('app').innerHTML = '<p class="text-red-600 text-center mt-8">Fehler beim Laden der Statistiken</p>';
     return;
   }
+
   // Durchschnitt berechnen
   const playerStats = {};
   allThrows.forEach(t => {
-    if (!playerStats[t.player_id]) playerStats[t.player_id] = { sum: 0, count: 0 };
+    if (!playerStats[t.player_id]) playerStats[t.player_id] = { sum: 0, count: 0, highscores: 0, finishes180: 0 };
     playerStats[t.player_id].sum += t.score;
     playerStats[t.player_id].count++;
   });
-  html += `<div class="mt-6">
-    <h3 class="text-lg mb-2">3-Dart-Average</h3>
-    <table class="w-full text-left mb-4">
-      <thead><tr><th class="pr-2">Spieler</th><th>Ø</th></tr></thead>
-      <tbody>
-        ${players.map(p => {
-          const s = playerStats[p.id];
-          const avg = s && s.count ? (s.sum / s.count * 3).toFixed(2) : '-';
-          return `<tr><td class="pr-2">${p.name}</td><td>${avg}</td></tr>`;
-        }).join('')}
-      </tbody>
-    </table>
-    <h3 class="text-lg mb-2">Highscores (Wurf ≥ 101)</h3>
-    <p>${throws.length} Highscores</p>
-    <h3 class="text-lg mt-4 mb-2">Highfinishes (180)</h3>
-    <p>${finishes.length} Highfinishes</p>
-    <h3 class="text-lg mt-4 mb-2">Shortlegs (≤ 18 Darts)</h3>
-    <p>${shortlegs.length} Shortlegs</p>
-  </div>`;
+
+  // Highscores & 180s zählen
+  throws.forEach(t => {
+    if (playerStats[t.player_id]) playerStats[t.player_id].highscores++;
+  });
+  finishes.forEach(t => {
+    if (playerStats[t.player_id]) playerStats[t.player_id].finishes180++;
+  });
+
+  // Shortlegs zählen
+  shortlegs.forEach(l => {
+    if (playerStats[l.winner_id]) {
+      if (!playerStats[l.winner_id].shortlegs) playerStats[l.winner_id].shortlegs = 0;
+      playerStats[l.winner_id].shortlegs++;
+    }
+  });
+
+  // Stats-Objekt für CSV-Export global speichern
+  window.bullseyerStatsData = {
+    players,
+    playerStats,
+    highscoresTotal: throws.length,
+    finishes180Total: finishes.length,
+    shortlegsTotal: shortlegs.length
+  };
+
+  // Modernes Design
+  const html = `
+    <div class="max-w-6xl mx-auto mt-6">
+      <!-- Header Card -->
+      <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl border-4 border-emerald-400 p-6 mb-6">
+        <div class="flex items-center justify-between mb-4">
+          <h2 class="text-2xl font-bold text-emerald-800 dark:text-emerald-400 flex items-center gap-2">
+            <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+            </svg>
+            Statistiken
+          </h2>
+          <button id="exportStatsCSV" class="px-4 py-2 bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white rounded-lg font-semibold transition-all transform hover:scale-105 shadow-lg flex items-center gap-2">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+            </svg>
+            CSV Export
+          </button>
+        </div>
+
+        <!-- Summary Stats -->
+        <div class="grid grid-cols-3 gap-4">
+          <div class="bg-gradient-to-br from-emerald-50 to-emerald-100 dark:from-emerald-900/20 dark:to-emerald-800/20 border-2 border-emerald-300 dark:border-emerald-500 rounded-lg p-4 text-center">
+            <div class="text-3xl font-bold text-emerald-700 dark:text-emerald-400">${throws.length}</div>
+            <div class="text-sm text-emerald-600 dark:text-emerald-300">Highscores (≥101)</div>
+          </div>
+          <div class="bg-gradient-to-br from-rose-50 to-rose-100 dark:from-rose-900/20 dark:to-rose-800/20 border-2 border-rose-300 dark:border-rose-500 rounded-lg p-4 text-center">
+            <div class="text-3xl font-bold text-rose-700 dark:text-rose-400">${finishes.length}</div>
+            <div class="text-sm text-rose-600 dark:text-rose-300">180er</div>
+          </div>
+          <div class="bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-2 border-blue-300 dark:border-blue-500 rounded-lg p-4 text-center">
+            <div class="text-3xl font-bold text-blue-700 dark:text-blue-400">${shortlegs.length}</div>
+            <div class="text-sm text-blue-600 dark:text-blue-300">Shortlegs (≤18 Darts)</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Player Stats Table -->
+      <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl border-4 border-blue-400 p-6">
+        <h3 class="text-xl font-bold text-blue-800 dark:text-blue-400 mb-4 flex items-center gap-2">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path>
+          </svg>
+          Spieler-Statistiken
+        </h3>
+        <div class="overflow-x-auto">
+          <table class="w-full">
+            <thead>
+              <tr class="border-b-2 border-blue-300 dark:border-blue-600">
+                <th class="text-left py-3 px-4 font-bold text-blue-900 dark:text-blue-100">Spieler</th>
+                <th class="text-center py-3 px-4 font-bold text-blue-900 dark:text-blue-100">3-Dart-Ø</th>
+                <th class="text-center py-3 px-4 font-bold text-blue-900 dark:text-blue-100">Highscores</th>
+                <th class="text-center py-3 px-4 font-bold text-blue-900 dark:text-blue-100">180er</th>
+                <th class="text-center py-3 px-4 font-bold text-blue-900 dark:text-blue-100">Shortlegs</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${players.map(p => {
+                const s = playerStats[p.id] || { sum: 0, count: 0, highscores: 0, finishes180: 0, shortlegs: 0 };
+                const avg = s.count ? (s.sum / s.count).toFixed(2) : '-';
+                return `
+                  <tr class="border-b border-blue-100 dark:border-blue-800 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition">
+                    <td class="py-3 px-4 font-semibold text-gray-900 dark:text-gray-100">${p.name}</td>
+                    <td class="text-center py-3 px-4 text-emerald-700 dark:text-emerald-400 font-bold">${avg}</td>
+                    <td class="text-center py-3 px-4 text-gray-700 dark:text-gray-300">${s.highscores}</td>
+                    <td class="text-center py-3 px-4 text-rose-700 dark:text-rose-400 font-bold">${s.finishes180}</td>
+                    <td class="text-center py-3 px-4 text-blue-700 dark:text-blue-400">${s.shortlegs}</td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+
   document.getElementById('app').innerHTML = html;
+
+  // CSV Export Handler
+  document.getElementById('exportStatsCSV').addEventListener('click', exportStatsToCSV);
+}
+
+// CSV Export Funktion
+function exportStatsToCSV() {
+  const data = window.bullseyerStatsData;
+  if (!data) return;
+
+  // CSV Header
+  let csv = 'Spieler,3-Dart-Average,Highscores (≥101),180er,Shortlegs\n';
+
+  // CSV Rows
+  data.players.forEach(p => {
+    const s = data.playerStats[p.id] || { sum: 0, count: 0, highscores: 0, finishes180: 0, shortlegs: 0 };
+    const avg = s.count ? (s.sum / s.count).toFixed(2) : '0';
+    csv += `${p.name},${avg},${s.highscores},${s.finishes180},${s.shortlegs}\n`;
+  });
+
+  // Download
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const link = document.createElement('a');
+  const url = URL.createObjectURL(blob);
+  link.setAttribute('href', url);
+  link.setAttribute('download', `bullseyer_stats_${new Date().toISOString().slice(0, 10)}.csv`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
