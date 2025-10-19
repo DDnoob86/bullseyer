@@ -37,7 +37,7 @@ Die App läuft jetzt im **Mock-Modus** ohne Supabase-Backend. Alle Daten werden 
 
 ## 🔄 Zurück zum echten Backend
 
-Wenn du Supabase eingerichtet hast, ändere in **2 Dateien** den Import:
+Wenn du Supabase eingerichtet hast, ändere in **3 Dateien** den Import:
 
 ### 1. `js/main.js` (Zeile 3)
 ```javascript
@@ -49,6 +49,15 @@ import { supabase } from './supabase.js';
 ```
 
 ### 2. `js/auth.js` (Zeile 2)
+```javascript
+// Von:
+import { supabase } from './supabase-mock.js';
+
+// Zu:
+import { supabase } from './supabase.js';
+```
+
+### 3. `js/livescoring.js` (Zeile 2)
 ```javascript
 // Von:
 import { supabase } from './supabase-mock.js';
