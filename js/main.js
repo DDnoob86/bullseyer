@@ -4,7 +4,12 @@ import { supabase } from './supabase-mock.js';
 import { generateRoundRobin } from './pairing.js';
 import { Leg } from './scorer.js';
 import { exportGameDay } from './export.js';
-import { renderLiveScorer, resetLeg } from './livescoring.js';
+// Neue modulare Livescorer-Imports
+import { renderLiveScorer } from './ui/livescorer/index.js';
+import { createLeg } from './services/match.js';
+import * as store from './state/store.js';
+import { START_SCORE, PLAYER, STORAGE_KEYS } from './utils/constants.js';
+import { ensurePlayerNames } from './utils/players.js';
 
 const DEV = true;
 
@@ -486,17 +491,8 @@ async function renderDashboard() {
 // --------------------------------------------------
 // 3) SCORER mit Sets & Legs & Turn Toggle
 // --------------------------------------------------
-let currentBoard = localStorage.getItem('bullseyer_board') || null;
-let currentMatch = null;
-let currentLeg = null;
-let currentLegNo = 0;
-let currentSetNo = 0;
-let setsWon = { p1: 0, p2: 0 };
-let remainingP1 = 501;
-let remainingP2 = 501;
-let currentPlayer = 'p1';
-let bullfinish = false;
-let currentLegSaved = false; // NEU: Flag, ob das aktuelle Leg schon gespeichert wurde
+// State wird jetzt über den zentralen Store verwaltet (js/state/store.js)
+let currentBoard = localStorage.getItem(STORAGE_KEYS.BOARD) || null;
 
 async function renderScorer() {
   const app = document.getElementById('app');
@@ -509,9 +505,9 @@ async function renderScorer() {
   }
 
   // Aktuelles Board aus localStorage oder erstes Board als Default
-  if (!currentBoard || !boards.includes(String(currentBoard))) { // <-- Vergleich als String!
+  if (!currentBoard || !boards.includes(String(currentBoard))) {
     currentBoard = boards[0];
-    localStorage.setItem('bullseyer_board', currentBoard);
+    localStorage.setItem(STORAGE_KEYS.BOARD, currentBoard);
   }
 
   // Board-Auswahl-Buttons - Modernes Design
@@ -552,100 +548,48 @@ async function renderScorer() {
 
   // Zurück-Button Handler
   document.getElementById('backToDashboard').onclick = () => {
-    currentMatch = null; // <--- Wichtig: Match-State zurücksetzen!
-    localStorage.removeItem('bullseyer_currentMatchId'); // Match-ID aus localStorage entfernen
+    store.resetState();
     window.location.hash = '#/dashboard';
   };
 
   // Board-Wechsel-Handler
   app.querySelectorAll('[data-board]').forEach(btn => btn.onclick = () => {
-    currentBoard = String(btn.dataset.board); // <-- Board als String speichern!
-    localStorage.setItem('bullseyer_board', currentBoard);
-    // State zurücksetzen beim Board-Wechsel
-    currentMatch = null;
-    localStorage.removeItem('bullseyer_currentMatchId');
-    currentLeg = null;
-    currentLegNo = 0;
-    currentSetNo = 0;
-    setsWon = { p1: 0, p2: 0 };
-    remainingP1 = 501;
-    remainingP2 = 501;
-    currentPlayer = 'p1';
+    currentBoard = String(btn.dataset.board);
+    localStorage.setItem(STORAGE_KEYS.BOARD, currentBoard);
+    store.resetState();
     renderScorer();
   });
 
-  // Prüfe, ob ein Match aktiv ist (aus localStorage)
+  // Prüfe, ob ein Match aktiv ist (aus localStorage oder Store)
+  const currentMatch = store.getCurrentMatch();
   if (!currentMatch) {
-    const matchId = localStorage.getItem('bullseyer_currentMatchId');
+    const matchId = localStorage.getItem(STORAGE_KEYS.CURRENT_MATCH_ID);
     if (matchId) {
       // Hole offene Matches für das aktuelle Board
       const matches = await fetchOpenMatches(currentBoard, true);
       const m = matches.find(x => String(x.id) === String(matchId));
       if (m) {
-        currentMatch = m;
-        currentSetNo = 1;
-        currentLegNo = 1;
-        setsWon = { p1: 0, p2: 0 };
-        currentPlayer = 'p1';
-        remainingP1 = 501;
-        remainingP2 = 501;
-        bullfinish = false;
-        currentLegSaved = false;
-        localStorage.setItem('bullseyer_currentMatchId', m.id); // <-- Korrigiert: m.id statt data.id
-        currentLeg = resetLeg();
-        window.location.hash = '#/livescorer'; // Route für Livescorer setzen
-        // renderScorer(); // ENTFERNT: Hash-Change übernimmt das Rendern
+        // Match im Store initialisieren
+        ensurePlayerNames(m);
+        store.initNewMatch({
+          match: m,
+          leg: createLeg(m, 1, 1)
+        });
+        window.location.hash = '#/livescorer';
+        return;
       } else {
-        // Falls das Match nicht mehr existiert, entferne die ID
-        localStorage.removeItem('bullseyer_currentMatchId');
+        localStorage.removeItem(STORAGE_KEYS.CURRENT_MATCH_ID);
       }
     }
   }
 
   // Wenn ein Match aktiv ist, direkt das Live-Scoring anzeigen
   if (currentMatch) {
-    // Spielernamen ergänzen, falls sie fehlen
-    if (!currentMatch.p1_name) {
-      currentMatch.p1_name = currentMatch.p1?.name || '[Spieler 1 fehlt]';
-    }
-    if (!currentMatch.p2_name) {
-      currentMatch.p2_name = currentMatch.p2?.name || '[Spieler 2 fehlt]';
-    }
+    ensurePlayerNames(currentMatch);
     renderLiveScorer({
       app,
-      currentMatch,
-      currentSetNo,
       bestSet: currentMatch.best_of_sets,
-      currentLegNo,
-      bestLeg: currentMatch.best_of_legs,
-      setsWon,
-      currentPlayer,
-      remainingP1,
-      remainingP2,
-      isP1Turn: currentPlayer === 'p1',
-      bullfinish,
-      currentLeg,
-      currentLegSaved,
-      saveLegFn: (...args) => saveLeg(currentMatch, currentLeg, ...args, remainingP1, bullfinish),
-      resetLegFn: () => {
-        currentLeg = resetLeg(currentMatch, currentSetNo, currentLegNo);
-        return currentLeg;
-      },
-      updateStateFn: (updates) => {
-        // State-Änderungen aus livescoring.js übernehmen
-        if (updates) {
-          if ('currentMatch' in updates) currentMatch = updates.currentMatch;
-          if ('currentSetNo' in updates) currentSetNo = updates.currentSetNo;
-          if ('currentLegNo' in updates) currentLegNo = updates.currentLegNo;
-          if ('setsWon' in updates) setsWon = updates.setsWon;
-          if ('currentPlayer' in updates) currentPlayer = updates.currentPlayer;
-          if ('remainingP1' in updates) remainingP1 = updates.remainingP1;
-          if ('remainingP2' in updates) remainingP2 = updates.remainingP2;
-          if ('bullfinish' in updates) bullfinish = updates.bullfinish;
-          if ('currentLeg' in updates) currentLeg = updates.currentLeg;
-          if ('currentLegSaved' in updates) currentLegSaved = updates.currentLegSaved;
-        }
-      }
+      bestLeg: currentMatch.best_of_legs
     });
     return;
   }
@@ -721,35 +665,33 @@ async function renderScorer() {
   scorerContent.addEventListener('click', handleMatchSelect);
 }
 
-function startMatch(m) {
+async function startMatch(m) {
   // Matchdaten inkl. Spielernamen aus Supabase nachladen
-  (async () => {
-    const { data, error } = await supabase
-      .from('matches')
-      .select(`*, p1:users!matches_p1_id_fkey(id, name), p2:users!matches_p2_id_fkey(id, name)`)
-      .eq('id', m.id)
-      .single();
-    if (error || !data) {
-      alert('Fehler beim Laden des Matches!');
-      return;
-    }
-    // Spielernamen ins Match-Objekt kopieren
-    data.p1_name = data.p1?.name || '[Spieler 1 fehlt]';
-    data.p2_name = data.p2?.name || '[Spieler 2 fehlt]';
-    currentMatch = data;
-    currentSetNo = 1;
-    currentLegNo = 1;
-    setsWon = { p1: 0, p2: 0 };
-    currentPlayer = 'p1';
-    remainingP1 = 501;
-    remainingP2 = 501;
-    bullfinish = false;
-    currentLegSaved = false;
-    localStorage.setItem('bullseyer_currentMatchId', data.id); // Match-ID persistieren
-    currentLeg = resetLeg();
-    window.location.hash = '#/livescorer'; // Route für Livescorer setzen
-    // renderScorer(); // ENTFERNT: Hash-Change übernimmt das Rendern
-  })();
+  const { data, error } = await supabase
+    .from('matches')
+    .select(`*, p1:users!matches_p1_id_fkey(id, name), p2:users!matches_p2_id_fkey(id, name)`)
+    .eq('id', m.id)
+    .single();
+
+  if (error || !data) {
+    alert('Fehler beim Laden des Matches!');
+    return;
+  }
+
+  // Spielernamen ergänzen
+  ensurePlayerNames(data);
+
+  // Match im zentralen Store initialisieren
+  store.initNewMatch({
+    match: data,
+    leg: createLeg(data, 1, 1)
+  });
+
+  // Match-ID persistieren
+  localStorage.setItem(STORAGE_KEYS.CURRENT_MATCH_ID, data.id);
+
+  // Route für Livescorer setzen
+  window.location.hash = '#/livescorer';
 }
 
 // --------------------------------------------------

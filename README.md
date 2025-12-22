@@ -75,11 +75,24 @@ bullseyer/
 │   ├── auth.js            # Authentifizierung
 │   ├── supabase.js        # Echtes Backend (nicht aktiv)
 │   ├── supabase-mock.js   # Mock-Backend (localStorage) ✅ AKTIV
-│   ├── livescoring.js     # Live-Scoring UI & Logik
 │   ├── scorer.js          # Leg-Klasse & Scoring-Logik
 │   ├── pairing.js         # Round-Robin-Pairing
-│   ├── stats.js           # Statistik-Aggregation
-│   └── export.js          # Excel-Export
+│   ├── export.js          # Excel-Export
+│   ├── state/
+│   │   └── store.js       # Zentraler State Manager
+│   ├── services/
+│   │   ├── match.js       # Match/Leg/Throw DB-Operationen
+│   │   └── stats.js       # Statistik-Berechnungen
+│   ├── ui/
+│   │   └── livescorer/
+│   │       ├── index.js   # Live-Scoring Hauptmodul
+│   │       ├── display.js # UI-Update-Funktionen
+│   │       ├── events.js  # Event-Handler
+│   │       ├── keypad.js  # Ziffernblock-Logik
+│   │       └── game-logic.js # Leg/Set/Match-Ende
+│   └── utils/
+│       ├── constants.js   # Konstanten (501, Player-Keys, etc.)
+│       └── players.js     # Spieler-Utilities
 ├── CLAUDE.md              # Technische Dokumentation für Entwickler
 ├── MOCK-MODE.md           # Mock-Modus Anleitung
 └── README.md              # Diese Datei
@@ -144,11 +157,10 @@ const supabaseAnonKey = 'DEIN_ANON_KEY';
 
 ### 3. Imports ändern
 
-Ändere in **3 Dateien** den Import von `supabase-mock.js` zu `supabase.js`:
+Ändere in **2 Dateien** den Import von `supabase-mock.js` zu `supabase.js`:
 
 - `js/main.js` (Zeile 3)
 - `js/auth.js` (Zeile 2)
-- `js/livescoring.js` (Zeile 2)
 
 ```javascript
 // Von:
