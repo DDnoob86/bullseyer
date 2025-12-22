@@ -652,17 +652,24 @@ async function renderScorer() {
   // Event-Delegation für Touch/Click: Nur noch click-Event (iPad/iOS Fix)
   let matchSelectLock = false;
   function handleMatchSelect(e) {
+    console.log('[Match-Select] Click detected', e.target);
     e.preventDefault();
     e.stopPropagation();
-    if (matchSelectLock) return;
+    if (matchSelectLock) {
+      console.log('[Match-Select] Locked, ignoring');
+      return;
+    }
     matchSelectLock = true;
     setTimeout(() => matchSelectLock = false, 400); // Doppelauslösung verhindern
     const btn = e.target.closest('button[data-mid]');
+    console.log('[Match-Select] Button found:', btn, 'data-mid:', btn?.dataset?.mid);
     if (!btn) return;
     const m = matches.find(x => String(x.id).trim() === String(btn.dataset.mid).trim());
+    console.log('[Match-Select] Match found:', m);
     if (m) startMatch(m);
   }
   scorerContent.addEventListener('click', handleMatchSelect);
+  console.log('[Match-Select] Event handler registered on scorerContent');
 }
 
 async function startMatch(m) {

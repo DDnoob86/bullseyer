@@ -109,6 +109,46 @@ export function calculateTotalScore() {
 }
 
 /**
+ * Findet den Multiplier des letzten eingegebenen Darts
+ * @returns {number} Multiplier des letzten Darts mit Wert > 0
+ */
+function getLastEnteredDartMultiplier() {
+  for (let i = currentDartIndex; i >= 0; i--) {
+    if (darts[i] > 0) {
+      return dartMultipliers[i];
+    }
+  }
+  return MULTIPLIER.SINGLE; // Fallback
+}
+
+/**
+ * Prüft ob der aktuelle Score ein gültiges Finish ist
+ * @returns {boolean} True wenn Finish erreicht (Score = Remaining und Double-Out erfüllt)
+ */
+function isCurrentScoreFinish() {
+  const currentPlayer = store.getCurrentPlayer();
+  const remaining = store.getRemaining(currentPlayer);
+  const currentScore = calculateTotalScore();
+  const match = store.getCurrentMatch();
+
+  // Kein Finish wenn Score != Remaining
+  if (currentScore !== remaining || currentScore === 0) return false;
+
+  // Bei Double-Out: Letzter eingegebener Dart muss Double sein
+  if (match?.double_out) {
+    // Finde den letzten eingegebenen Dart (nicht 0)
+    for (let i = currentDartIndex; i >= 0; i--) {
+      if (darts[i] > 0) {
+        return dartMultipliers[i] === MULTIPLIER.DOUBLE;
+      }
+    }
+    return false;
+  }
+
+  return true;
+}
+
+/**
  * Aktualisiert die Dart-Displays im UI
  * @param {HTMLElement} container - Der Container mit den Dart-Displays
  */
@@ -165,6 +205,22 @@ export function initKeypadHandlers(container, options = {}) {
   }
   keypadContainer.setAttribute('data-bullseyer-initialized', 'true');
 
+  // Hilfsfunktion: Submit-Button Text aktualisieren
+  const updateSubmitButtonText = () => {
+    const submitBtn = container.querySelector('#submitScore');
+    if (submitBtn) {
+      if (isCurrentScoreFinish()) {
+        submitBtn.textContent = 'Finish! ✓';
+        submitBtn.classList.add('bg-gradient-to-r', 'from-amber-500', 'to-amber-600');
+        submitBtn.classList.remove('from-emerald-500', 'to-emerald-600');
+      } else {
+        submitBtn.textContent = currentDartIndex === 2 ? 'Score eingeben' : 'Weiter →';
+        submitBtn.classList.remove('from-amber-500', 'to-amber-600');
+        submitBtn.classList.add('from-emerald-500', 'to-emerald-600');
+      }
+    }
+  };
+
   // Ziffern-Buttons
   const keypadBtns = container.querySelectorAll('.keypad-btn');
   keypadBtns.forEach(btn => {
@@ -174,6 +230,7 @@ export function initKeypadHandlers(container, options = {}) {
       if (digit !== null) {
         addDigitToCurrentDart(digit);
         updateDartDisplays(container);
+        updateSubmitButtonText();
       }
     });
   });
@@ -199,6 +256,7 @@ export function initKeypadHandlers(container, options = {}) {
       });
 
       updateDartDisplays(container);
+      updateSubmitButtonText();
     });
   });
 
@@ -229,10 +287,15 @@ export function initKeypadHandlers(container, options = {}) {
     submitBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
 
-      // Wenn noch nicht alle 3 Darts: zum nächsten Dart wechseln
-      if (!nextDart()) {
+      // Prüfe ob aktueller Score ein Finish ist
+      const isFinish = isCurrentScoreFinish();
+
+      // Wenn noch nicht alle 3 Darts UND kein Finish: zum nächsten Dart wechseln
+      if (!isFinish && !nextDart()) {
         updateDartDisplays(container);
-        submitBtn.textContent = currentDartIndex === 2 ? 'Score eingeben' : 'Weiter →';
+        // Prüfe nach Dart-Wechsel ob jetzt ein Finish möglich ist
+        const finishPossible = isCurrentScoreFinish();
+        submitBtn.textContent = finishPossible ? 'Finish! ✓' : (currentDartIndex === 2 ? 'Score eingeben' : 'Weiter →');
         return;
       }
 
@@ -242,8 +305,9 @@ export function initKeypadHandlers(container, options = {}) {
       const currentPlayer = store.getCurrentPlayer();
       const remaining = store.getRemaining(currentPlayer);
 
-      // Bust-Check
-      const bustResult = checkBust(score, remaining, match?.double_out, dartMultipliers[2]);
+      // Bust-Check - verwende den Multiplier des letzten eingegebenen Darts
+      const lastMultiplier = getLastEnteredDartMultiplier();
+      const bustResult = checkBust(score, remaining, match?.double_out, lastMultiplier);
       if (bustResult.isBust) {
         alert(bustResult.reason);
         clearAllDarts();

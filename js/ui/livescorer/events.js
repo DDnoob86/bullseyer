@@ -78,6 +78,9 @@ async function handleQuickScore(btn, bestSet, bestLeg) {
   const bustResult = checkBust(score, remaining, match?.double_out);
   if (bustResult.isBust) {
     alert(bustResult.reason);
+    // Spieler wechseln bei Bust
+    store.setCurrentPlayer(switchPlayer(currentPlayer));
+    updateRestpunkteUI();
     return;
   }
 
@@ -85,6 +88,9 @@ async function handleQuickScore(btn, bestSet, bestLeg) {
   if (remaining - score === 0 && match?.double_out) {
     if (!isValidQuickScoreDoubleOut(score, remaining, dartValues)) {
       alert('BUST! Muss mit Double finishen.');
+      // Spieler wechseln bei Bust
+      store.setCurrentPlayer(switchPlayer(currentPlayer));
+      updateRestpunkteUI();
       return;
     }
   }
@@ -237,6 +243,7 @@ export function initBackButton(container) {
 
   backBtn.onclick = () => {
     store.resetState();
+    localStorage.removeItem('bullseyer_currentMatchId');
 
     // Header wieder einblenden
     const mainHeader = document.getElementById('mainHeader');
