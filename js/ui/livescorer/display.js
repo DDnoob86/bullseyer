@@ -103,14 +103,14 @@ export function updatePlayerIndicator() {
  * Aktualisiert die detaillierten Match-Statistiken
  */
 export function updateDetailedStats() {
-  const throwHistory = store.getThrowHistory();
+  const allMatchThrows = store.getAllMatchThrows();
 
   const stats = {
     p1: { count180: 0, count140Plus: 0, highScore: 0, dartsLeg: 0, dartsMatch: 0 },
     p2: { count180: 0, count140Plus: 0, highScore: 0, dartsLeg: 0, dartsMatch: 0 }
   };
 
-  throwHistory.forEach(th => {
+  allMatchThrows.forEach(th => {
     const player = th.player;
     const score = th.score;
 
