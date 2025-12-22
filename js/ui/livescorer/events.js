@@ -3,94 +3,93 @@ import * as store from '../../state/store.js';
 import { saveThrow } from '../../services/match.js';
 import { getPlayerId, switchPlayer } from '../../utils/players.js';
 import { distributeDarts, PLAYER } from '../../utils/constants.js';
-import { isValidCheckout } from '../../utils/checkouts.js';
-import { handleLegEnd } from './game-logic.js';
-import { updateAllDisplays, updateCheckoutHint } from './display.js';
-import { showCheckoutDialog, showBustToast } from './dialogs.js';
+import { checkBust, isValidQuickScoreDoubleOut, handleLegEnd } from './game-logic.js';
+import { updateRestpunkteUI, updateSetsLegsUI, updateAverages, updateDetailedStats } from './display.js';
 
 // Delegation Handler Reference
 let delegationHandler = null;
 
 /**
- * Initialisiert den globalen Event-Delegation-Handler für Quick-Score Buttons
+ * Initialisiert den globalen Event-Delegation-Handler
+ * @param {Object} options - { bestSet, bestLeg }
  */
 export function initEventDelegation(options = {}) {
   const { bestSet = 3, bestLeg = 3 } = options;
 
+  // Alten Handler entfernen
   if (delegationHandler) {
     document.body.removeEventListener('click', delegationHandler);
+    console.log('[Events] Alter Delegation-Handler entfernt');
   }
 
   delegationHandler = async function(e) {
-    const btn = e.target.closest('button.quick-score-btn');
+    const appEl = document.getElementById('app');
+    if (!appEl || !appEl.contains(e.target)) return;
+
+    const btn = e.target.closest('button');
     if (!btn) return;
 
-    const score = parseInt(btn.dataset.score, 10);
-    if (isNaN(score) || score < 0 || score > 180) return;
+    // Keypad-Buttons ausschließen (haben eigene Handler)
+    const isKeypadBtn = btn.classList.contains('keypad-btn') ||
+                        btn.id === 'clearBtn' ||
+                        btn.id === 'backspaceBtn' ||
+                        btn.id === 'submitScore';
+    if (isKeypadBtn) return;
 
-    await handleQuickScore(score, bestSet, bestLeg);
+    // Quick-Score Buttons behandeln
+    if (btn.hasAttribute('data-score')) {
+      await handleQuickScore(btn, bestSet, bestLeg);
+    }
   };
 
   document.body.addEventListener('click', delegationHandler);
+  console.log('[Events] Delegation-Handler registriert');
 }
 
+/**
+ * Entfernt den Delegation-Handler
+ */
 export function cleanupEventDelegation() {
   if (delegationHandler) {
     document.body.removeEventListener('click', delegationHandler);
     delegationHandler = null;
+    console.log('[Events] Delegation-Handler entfernt');
   }
 }
 
 /**
  * Behandelt Quick-Score Button-Klicks
  */
-async function handleQuickScore(score, bestSet, bestLeg) {
+async function handleQuickScore(btn, bestSet, bestLeg) {
+  const score = parseInt(btn.dataset.score, 10);
+  if (isNaN(score) || score < 0 || score > 180) {
+    console.error('[Events] Ungültiger Quick-Score:', score);
+    return;
+  }
+
   const match = store.getCurrentMatch();
   const currentPlayer = store.getCurrentPlayer();
   const remaining = store.getRemaining(currentPlayer);
-  const isDoubleOut = match?.double_out;
-  const newRemaining = remaining - score;
 
-  // Bust-Checks
-  if (score > remaining) {
-    showBustToast('BUST! Zu hoch 💥');
-    store.setCurrentPlayer(switchPlayer(currentPlayer));
-    updateAllDisplays(bestSet, bestLeg);
+  // Dart-Verteilung berechnen
+  const dartValues = distributeDarts(score);
+
+  // Bust-Check
+  const bustResult = checkBust(score, remaining, match?.double_out);
+  if (bustResult.isBust) {
+    alert(bustResult.reason);
     return;
   }
 
-  if (newRemaining === 1 && isDoubleOut) {
-    showBustToast('BUST! Rest = 1 💥');
-    store.setCurrentPlayer(switchPlayer(currentPlayer));
-    updateAllDisplays(bestSet, bestLeg);
-    return;
-  }
-
-  const isFinish = newRemaining === 0;
-  let finishDarts = 3;
-  let bullfinish = false;
-
-  // Checkout?
-  if (isFinish) {
-    if (isDoubleOut && !isValidCheckout(remaining)) {
-      showBustToast('BUST! Kein Checkout 💥');
-      store.setCurrentPlayer(switchPlayer(currentPlayer));
-      updateAllDisplays(bestSet, bestLeg);
+  // Double-Out Validierung für Quick-Scores
+  if (remaining - score === 0 && match?.double_out) {
+    if (!isValidQuickScoreDoubleOut(score, remaining, dartValues)) {
+      alert('BUST! Muss mit Double finishen.');
       return;
     }
-
-    // Checkout-Dialog mit smarter Dart-Begrenzung + Bullfinish
-    const result = await showCheckoutDialog(remaining);
-    finishDarts = result.darts;
-    bullfinish = result.bullfinish;
   }
 
-  // Bullfinish im Store
-  if (bullfinish) {
-    store.setBullfinish(true);
-  }
-
-  // Wurf speichern
+  // Wurf in History speichern
   store.addThrow({
     player: currentPlayer,
     score,
@@ -100,14 +99,13 @@ async function handleQuickScore(score, bestSet, bestLeg) {
     setsWon: store.getSetsWon(),
     legNo: store.getCurrentLegNo(),
     setNo: store.getCurrentSetNo(),
-    bullfinish: bullfinish || store.getBullfinish(),
+    bullfinish: store.getBullfinish(),
     legStarter: store.getLegStarter(),
     gameStarter: store.getGameStarter()
   });
 
-  // Wurf in DB
+  // Wurf in DB speichern
   const leg = store.getCurrentLeg();
-  const dartValues = distributeDarts(score);
   if (match && leg) {
     await saveThrow({
       matchId: match.id,
@@ -117,55 +115,80 @@ async function handleQuickScore(score, bestSet, bestLeg) {
       dart2: dartValues[1],
       dart3: dartValues[2],
       total: score,
-      isFinish,
+      isFinish: remaining - score === 0,
       orderNo: store.getThrowHistory().length
     });
   }
 
   // Remaining aktualisieren
-  store.setRemaining(currentPlayer, newRemaining);
+  store.setRemaining(currentPlayer, remaining - score);
+
+  // Spieler wechseln
   store.setCurrentPlayer(switchPlayer(currentPlayer));
 
   // UI aktualisieren
-  updateAllDisplays(bestSet, bestLeg);
+  updateRestpunkteUI();
+  updateSetsLegsUI(bestSet, bestLeg);
+  updateAverages();
+  updateDetailedStats();
+
+  console.log('[Events] Quick-Score verarbeitet:', score, 'Neuer Spieler:', store.getCurrentPlayer());
 
   // Leg-Ende prüfen
-  if (isFinish) {
-    if (leg) leg.finishDarts = finishDarts;
-    await handleLegEnd('Quick-Score', { finishDarts, bullfinish });
+  if (store.getRemainingP1() === 0 || store.getRemainingP2() === 0) {
+    await handleLegEnd('Quick-Score');
   }
 }
 
 /**
  * Initialisiert den Undo-Button Handler
+ * @param {HTMLElement} container - Der App-Container
+ * @param {Function} onUndo - Callback nach Undo
  */
 export function initUndoHandler(container, onUndo) {
   const undoBtn = container.querySelector('#undoBtn');
-  if (!undoBtn) return;
+  const undoContainer = undoBtn?.parentElement;
 
-  const undoContainer = undoBtn.parentElement;
-  if (undoContainer?.hasAttribute('data-bullseyer-undo-initialized')) return;
-  if (undoContainer) undoContainer.setAttribute('data-bullseyer-undo-initialized', 'true');
+  if (!undoBtn || !undoContainer || undoContainer.hasAttribute('data-bullseyer-undo-initialized')) {
+    return;
+  }
+  undoContainer.setAttribute('data-bullseyer-undo-initialized', 'true');
 
   undoBtn.addEventListener('click', () => {
     const lastThrow = store.undoLastThrow();
-    if (!lastThrow) return;
-    console.log('[Events] Undo:', lastThrow);
-    if (onUndo) onUndo(lastThrow);
+    if (!lastThrow) {
+      console.log('[Events] Keine Würfe zum Rückgängig machen');
+      return;
+    }
+
+    console.log('[Events] Undo ausgeführt:', lastThrow);
+
+    // UI aktualisieren
+    updateRestpunkteUI();
+    updateSetsLegsUI(3, 3); // TODO: bestSet/bestLeg übergeben
+    updateAverages();
+    updateDetailedStats();
+
+    if (onUndo) {
+      onUndo(lastThrow);
+    }
   });
 }
 
 /**
  * Initialisiert die Startspieler-Auswahl
+ * @param {HTMLElement} container - Der App-Container
+ * @param {Function} onStarterSelected - Callback wenn Startspieler gewählt
  */
 export function initStarterSelection(container, onStarterSelected) {
   const startP1Btn = container.querySelector('#startP1');
   const startP2Btn = container.querySelector('#startP2');
   const starterSelection = container.querySelector('#starterSelection');
-  const inputArea = container.querySelector('#scoreInputArea');
+  const inputArea = container.querySelector('.flex.gap-6.mb-6');
 
+  // Eingabe deaktivieren bis Startspieler gewählt
   if (store.getGameStarter() === null && inputArea) {
-    inputArea.style.opacity = '0.3';
+    inputArea.style.opacity = '0.5';
     inputArea.style.pointerEvents = 'none';
   }
 
@@ -174,6 +197,7 @@ export function initStarterSelection(container, onStarterSelected) {
       selectStarter(PLAYER.P1, starterSelection, inputArea, onStarterSelected);
     });
   }
+
   if (startP2Btn) {
     startP2Btn.addEventListener('click', () => {
       selectStarter(PLAYER.P2, starterSelection, inputArea, onStarterSelected);
@@ -181,33 +205,51 @@ export function initStarterSelection(container, onStarterSelected) {
   }
 }
 
+/**
+ * Setzt den Startspieler
+ */
 function selectStarter(player, starterSelection, inputArea, callback) {
   store.setGameStarter(player);
   store.setLegStarter(player);
   store.setCurrentPlayer(player);
 
+  // UI aktualisieren
   if (starterSelection) starterSelection.style.display = 'none';
   if (inputArea) {
     inputArea.style.opacity = '1';
     inputArea.style.pointerEvents = 'auto';
   }
 
-  if (callback) callback(player);
+  console.log('[Events] Startspieler gewählt:', player);
+
+  if (callback) {
+    callback(player);
+  }
 }
 
+/**
+ * Initialisiert den Zurück-Button Handler
+ * @param {HTMLElement} container - Der App-Container
+ */
 export function initBackButton(container) {
   const backBtn = container.querySelector('#backToMatchSelect');
   if (!backBtn) return;
 
   backBtn.onclick = () => {
     store.resetState();
-    localStorage.removeItem('bullseyer_currentMatchId');
+
+    // Header wieder einblenden
     const mainHeader = document.getElementById('mainHeader');
     if (mainHeader) mainHeader.style.display = 'block';
+
     window.location.hash = '#/scorer';
   };
 }
 
+/**
+ * Initialisiert den Toggle-Stats Button
+ * @param {HTMLElement} container - Der App-Container
+ */
 export function initStatsToggle(container) {
   const toggleStatsBtn = container.querySelector('#toggleStats');
   if (!toggleStatsBtn) return;
@@ -215,6 +257,7 @@ export function initStatsToggle(container) {
   toggleStatsBtn.addEventListener('click', () => {
     const statsDetails = container.querySelector('#statsDetails');
     const toggleText = container.querySelector('#toggleStatsText');
+
     if (statsDetails && toggleText) {
       if (statsDetails.classList.contains('hidden')) {
         statsDetails.classList.remove('hidden');

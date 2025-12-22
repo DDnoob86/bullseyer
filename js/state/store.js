@@ -37,10 +37,7 @@ const state = {
 
   // History
   throwHistory: [],
-  allMatchThrows: [],
-
-  // Leg-Ergebnisse (für detaillierte Match-Statistiken)
-  legResults: []
+  allMatchThrows: []
 };
 
 // Subscribers für State-Änderungen
@@ -139,10 +136,6 @@ export function getAllMatchThrows() {
   return [...state.allMatchThrows];
 }
 
-export function getLegResults() {
-  return [...state.legResults];
-}
-
 /**
  * Gibt den kompletten State zurück (readonly Kopie)
  */
@@ -162,8 +155,7 @@ export function getState() {
     currentLegSaved: state.currentLegSaved,
     currentBoard: state.currentBoard,
     throwHistory: [...state.throwHistory],
-    allMatchThrows: [...state.allMatchThrows],
-    legResults: [...state.legResults]
+    allMatchThrows: [...state.allMatchThrows]
   };
 }
 
@@ -303,15 +295,6 @@ export function clearAllMatchThrows() {
   notifySubscribers(['allMatchThrows']);
 }
 
-/**
- * Speichert das Ergebnis eines beendeten Legs
- * @param {Object} result - { setNo, legNo, winner, finishDarts, checkoutScore, bullfinish, p1Darts, p2Darts, p1Avg, p2Avg }
- */
-export function addLegResult(result) {
-  state.legResults.push(result);
-  notifySubscribers(['legResults']);
-}
-
 // === BATCH UPDATES ===
 
 /**
@@ -399,7 +382,6 @@ export function initNewMatch(match) {
   state.currentLegSaved = false;
   state.throwHistory = [];
   state.allMatchThrows = [];
-  state.legResults = [];
 
   if (match?.id) {
     localStorage.setItem(STORAGE_KEYS.CURRENT_MATCH_ID, match.id);
@@ -460,7 +442,6 @@ export function resetState() {
   state.currentLegSaved = false;
   state.throwHistory = [];
   state.allMatchThrows = [];
-  state.legResults = [];
 
   localStorage.removeItem(STORAGE_KEYS.CURRENT_MATCH_ID);
 

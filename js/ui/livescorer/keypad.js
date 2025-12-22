@@ -1,247 +1,335 @@
-// Vereinfachte Score-Eingabe - Gesamtpunktzahl statt Einzeldarts
+// Keypad-Logik für den Livescorer
 import * as store from '../../state/store.js';
 import { saveThrow } from '../../services/match.js';
 import { getPlayerId, switchPlayer } from '../../utils/players.js';
-import { distributeDarts } from '../../utils/constants.js';
-import { isValidCheckout } from '../../utils/checkouts.js';
-import { handleLegEnd } from './game-logic.js';
-import { updateAllDisplays, updateCheckoutHint } from './display.js';
-import { showCheckoutDialog, showBustToast } from './dialogs.js';
+import { SCORE_THRESHOLDS, MULTIPLIER } from '../../utils/constants.js';
+import { checkBust, handleLegEnd } from './game-logic.js';
+import { updateRestpunkteUI, updateSetsLegsUI, updateAverages, updateDetailedStats } from './display.js';
 
-// Eingabe-State
-let currentInput = '';
+// Keypad State
+let currentDartIndex = 0;
+let darts = [0, 0, 0];
+let dartMultipliers = [MULTIPLIER.SINGLE, MULTIPLIER.SINGLE, MULTIPLIER.SINGLE];
 
 /**
- * Setzt die Score-Eingabe zurück
+ * Initialisiert den Keypad-State
  */
-export function resetScoreInput() {
-  currentInput = '';
-  updateScoreDisplay();
+export function initKeypadState() {
+  currentDartIndex = 0;
+  darts = [0, 0, 0];
+  dartMultipliers = [MULTIPLIER.SINGLE, MULTIPLIER.SINGLE, MULTIPLIER.SINGLE];
 }
 
 /**
- * Gibt den aktuellen Eingabewert zurück
+ * Gibt den aktuellen Keypad-State zurück
  */
-export function getCurrentInput() {
-  return currentInput;
+export function getKeypadState() {
+  return {
+    currentDartIndex,
+    darts: [...darts],
+    dartMultipliers: [...dartMultipliers]
+  };
 }
 
-function updateScoreDisplay() {
-  const display = document.getElementById('scoreDisplay');
-  if (display) {
-    display.textContent = currentInput || '0';
+/**
+ * Setzt den Wert eines Darts
+ */
+export function setDartValue(dartIndex, value) {
+  if (dartIndex >= 0 && dartIndex < 3) {
+    darts[dartIndex] = Math.min(value, SCORE_THRESHOLDS.MAX_SINGLE_DART);
   }
 }
 
 /**
- * Verarbeitet einen Score (von Numpad oder Quick-Score)
- * @param {number} score - Gesamtpunktzahl der Aufnahme
- * @param {Object} options - { bestSet, bestLeg, finishDarts, bullfinish }
+ * Setzt den Multiplier eines Darts
  */
-async function processScore(score, options = {}) {
-  const { bestSet = 3, bestLeg = 3, finishDarts = 3, bullfinish = false } = options;
-
-  const match = store.getCurrentMatch();
-  const currentPlayer = store.getCurrentPlayer();
-  const remaining = store.getRemaining(currentPlayer);
-  const isDoubleOut = match?.double_out;
-  const newRemaining = remaining - score;
-
-  // Bust-Checks
-  if (score > remaining) {
-    showBustToast('BUST! Zu hoch 💥');
-    store.setCurrentPlayer(switchPlayer(currentPlayer));
-    updateAllDisplays(bestSet, bestLeg);
-    return;
+export function setDartMultiplier(dartIndex, multiplier) {
+  if (dartIndex >= 0 && dartIndex < 3) {
+    dartMultipliers[dartIndex] = multiplier;
   }
+}
 
-  if (newRemaining === 1 && isDoubleOut) {
-    showBustToast('BUST! Rest = 1 💥');
-    store.setCurrentPlayer(switchPlayer(currentPlayer));
-    updateAllDisplays(bestSet, bestLeg);
-    return;
+/**
+ * Fügt eine Ziffer zum aktuellen Dart hinzu
+ */
+export function addDigitToCurrentDart(digit) {
+  const currentValue = darts[currentDartIndex];
+  if (currentValue === 0) {
+    darts[currentDartIndex] = parseInt(digit);
+  } else {
+    const newValue = parseInt(currentValue.toString() + digit);
+    if (newValue <= SCORE_THRESHOLDS.MAX_SINGLE_DART) {
+      darts[currentDartIndex] = newValue;
+    }
   }
+  return darts[currentDartIndex];
+}
 
-  if (newRemaining === 0 && isDoubleOut && !isValidCheckout(remaining)) {
-    showBustToast('BUST! Kein Checkout 💥');
-    store.setCurrentPlayer(switchPlayer(currentPlayer));
-    updateAllDisplays(bestSet, bestLeg);
-    return;
+/**
+ * Entfernt die letzte Ziffer vom aktuellen Dart
+ */
+export function backspaceCurrentDart() {
+  const currentValue = darts[currentDartIndex];
+  if (currentValue >= 10) {
+    darts[currentDartIndex] = Math.floor(currentValue / 10);
+  } else {
+    darts[currentDartIndex] = 0;
   }
+  return darts[currentDartIndex];
+}
 
-  const isFinish = newRemaining === 0;
+/**
+ * Setzt alle Darts zurück
+ */
+export function clearAllDarts() {
+  darts = [0, 0, 0];
+  dartMultipliers = [MULTIPLIER.SINGLE, MULTIPLIER.SINGLE, MULTIPLIER.SINGLE];
+  currentDartIndex = 0;
+}
 
-  // Bullfinish im Store setzen
-  if (bullfinish) {
-    store.setBullfinish(true);
+/**
+ * Wechselt zum nächsten Dart
+ * @returns {boolean} True wenn alle Darts eingegeben wurden
+ */
+export function nextDart() {
+  if (currentDartIndex < 2) {
+    currentDartIndex++;
+    return false;
   }
+  return true;
+}
 
-  // Wurf in History speichern
-  store.addThrow({
-    player: currentPlayer,
-    score,
-    remP1: store.getRemainingP1(),
-    remP2: store.getRemainingP2(),
-    legsWon: store.getLegsWon(),
-    setsWon: store.getSetsWon(),
-    legNo: store.getCurrentLegNo(),
-    setNo: store.getCurrentSetNo(),
-    bullfinish: bullfinish || store.getBullfinish(),
-    legStarter: store.getLegStarter(),
-    gameStarter: store.getGameStarter()
+/**
+ * Berechnet den Gesamt-Score
+ */
+export function calculateTotalScore() {
+  return (darts[0] * dartMultipliers[0]) +
+         (darts[1] * dartMultipliers[1]) +
+         (darts[2] * dartMultipliers[2]);
+}
+
+/**
+ * Aktualisiert die Dart-Displays im UI
+ * @param {HTMLElement} container - Der Container mit den Dart-Displays
+ */
+export function updateDartDisplays(container) {
+  const displays = [
+    container.querySelector('#dart1Display'),
+    container.querySelector('#dart2Display'),
+    container.querySelector('#dart3Display')
+  ];
+  const totalDisplay = container.querySelector('#totalDisplay');
+
+  displays.forEach((display, i) => {
+    if (display) {
+      const value = darts[i];
+      const mult = dartMultipliers[i];
+
+      // Prefix je nach Multiplier
+      let prefix = '';
+      if (value > 0) {
+        if (mult === MULTIPLIER.DOUBLE) prefix = 'D';
+        else if (mult === MULTIPLIER.TRIPLE) prefix = 'T';
+        else prefix = 'S';
+      }
+
+      display.textContent = value > 0 ? prefix + value : value;
+
+      // Highlight current dart
+      if (i === currentDartIndex) {
+        display.classList.add('border-4', 'border-emerald-500');
+        display.classList.remove('border-2', 'border-gray-300');
+      } else {
+        display.classList.remove('border-4', 'border-emerald-500');
+        display.classList.add('border-2', 'border-gray-300');
+      }
+    }
   });
 
-  // Wurf in DB speichern
-  const leg = store.getCurrentLeg();
-  const dartValues = distributeDarts(score);
-  if (match && leg) {
-    await saveThrow({
-      matchId: match.id,
-      legId: leg.id,
-      playerId: getPlayerId(match, currentPlayer),
-      dart1: dartValues[0],
-      dart2: dartValues[1],
-      dart3: dartValues[2],
-      total: score,
-      isFinish,
-      orderNo: store.getThrowHistory().length
-    });
-  }
-
-  // Remaining aktualisieren
-  store.setRemaining(currentPlayer, newRemaining);
-
-  // Spieler wechseln
-  store.setCurrentPlayer(switchPlayer(currentPlayer));
-
-  // UI aktualisieren
-  updateAllDisplays(bestSet, bestLeg);
-
-  console.log('[Keypad] Score:', score, 'Finish:', isFinish, 'Darts:', finishDarts, 'Bull:', bullfinish);
-
-  // Leg-Ende prüfen
-  if (isFinish) {
-    if (leg) leg.finishDarts = finishDarts;
-    await handleLegEnd('Score Input', { finishDarts, bullfinish });
+  if (totalDisplay) {
+    totalDisplay.textContent = calculateTotalScore();
   }
 }
 
 /**
- * Verarbeitet eine Score-Eingabe mit Checkout-Dialog wenn nötig
+ * Initialisiert die Keypad Event-Handler
+ * @param {HTMLElement} container - Der App-Container
+ * @param {Object} options - Optionen { bestSet, bestLeg, onScoreSubmitted }
  */
-async function handleScoreSubmit(score, options = {}) {
-  const { bestSet = 3, bestLeg = 3 } = options;
-  const match = store.getCurrentMatch();
-  const currentPlayer = store.getCurrentPlayer();
-  const remaining = store.getRemaining(currentPlayer);
-  const isDoubleOut = match?.double_out;
-  const newRemaining = remaining - score;
+export function initKeypadHandlers(container, options = {}) {
+  const { bestSet = 3, bestLeg = 3, onScoreSubmitted } = options;
 
-  // Ist es ein Checkout?
-  if (newRemaining === 0) {
-    if (isDoubleOut && !isValidCheckout(remaining)) {
-      showBustToast('BUST! Kein Checkout 💥');
-      store.setCurrentPlayer(switchPlayer(currentPlayer));
-      updateAllDisplays(bestSet, bestLeg);
-      return;
-    }
-
-    // Checkout-Dialog mit smarter Dart-Begrenzung + Bullfinish-Frage
-    const result = await showCheckoutDialog(remaining);
-    await processScore(score, {
-      ...options,
-      finishDarts: result.darts,
-      bullfinish: result.bullfinish
-    });
-  } else {
-    // Normaler Score
-    await processScore(score, { ...options, finishDarts: 3, bullfinish: false });
+  const keypadContainer = container.querySelector('.grid.grid-cols-3.gap-3.mb-4');
+  if (!keypadContainer || keypadContainer.hasAttribute('data-bullseyer-initialized')) {
+    return;
   }
-}
+  keypadContainer.setAttribute('data-bullseyer-initialized', 'true');
 
-/**
- * Initialisiert die vereinfachte Score-Eingabe
- */
-export function initScoreInput(container, options = {}) {
-  const { bestSet = 3, bestLeg = 3 } = options;
-
-  const inputArea = container.querySelector('#scoreInputArea');
-  if (!inputArea || inputArea.hasAttribute('data-bullseyer-initialized')) return;
-  inputArea.setAttribute('data-bullseyer-initialized', 'true');
-
-  currentInput = '';
-  updateScoreDisplay();
-
-  // --- Numpad Ziffern ---
-  container.querySelectorAll('.numpad-btn').forEach(btn => {
+  // Ziffern-Buttons
+  const keypadBtns = container.querySelectorAll('.keypad-btn');
+  keypadBtns.forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const digit = btn.getAttribute('data-digit');
-      if (digit === null) return;
-
-      const newInput = currentInput + digit;
-      const newValue = parseInt(newInput, 10);
-      if (newValue > 180) return;
-
-      currentInput = newInput;
-      updateScoreDisplay();
+      if (digit !== null) {
+        addDigitToCurrentDart(digit);
+        updateDartDisplays(container);
+      }
     });
   });
 
-  // --- Clear ---
+  // Multiplier Buttons
+  const multBtns = container.querySelectorAll('.mult-btn');
+  multBtns.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const dartIndex = parseInt(btn.getAttribute('data-dart'));
+      const mult = parseInt(btn.getAttribute('data-mult'));
+
+      setDartMultiplier(dartIndex, mult);
+
+      // Button-Highlight aktualisieren
+      const dartGroup = btn.parentElement;
+      dartGroup.querySelectorAll('.mult-btn').forEach(b => {
+        if (b === btn) {
+          b.classList.add('ring-2', 'ring-white', 'ring-offset-2');
+        } else {
+          b.classList.remove('ring-2', 'ring-white', 'ring-offset-2');
+        }
+      });
+
+      updateDartDisplays(container);
+    });
+  });
+
+  // Clear Button
   const clearBtn = container.querySelector('#clearBtn');
   if (clearBtn) {
     clearBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      currentInput = '';
-      updateScoreDisplay();
+      clearAllDarts();
+      resetMultiplierButtons(container);
+      updateDartDisplays(container);
     });
   }
 
-  // --- Backspace ---
+  // Backspace Button
   const backspaceBtn = container.querySelector('#backspaceBtn');
   if (backspaceBtn) {
     backspaceBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      currentInput = currentInput.slice(0, -1);
-      updateScoreDisplay();
+      backspaceCurrentDart();
+      updateDartDisplays(container);
     });
   }
 
-  // --- OK / Submit ---
+  // Submit Button
   const submitBtn = container.querySelector('#submitScore');
   if (submitBtn) {
     submitBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      const score = parseInt(currentInput, 10);
 
-      if (isNaN(score) || score < 0) {
-        currentInput = '';
-        updateScoreDisplay();
+      // Wenn noch nicht alle 3 Darts: zum nächsten Dart wechseln
+      if (!nextDart()) {
+        updateDartDisplays(container);
+        submitBtn.textContent = currentDartIndex === 2 ? 'Score eingeben' : 'Weiter →';
         return;
       }
 
-      if (score > 180) {
-        showBustToast('Max 180! 💥');
-        currentInput = '';
-        updateScoreDisplay();
+      // Score berechnen und verarbeiten
+      const score = calculateTotalScore();
+      const match = store.getCurrentMatch();
+      const currentPlayer = store.getCurrentPlayer();
+      const remaining = store.getRemaining(currentPlayer);
+
+      // Bust-Check
+      const bustResult = checkBust(score, remaining, match?.double_out, dartMultipliers[2]);
+      if (bustResult.isBust) {
+        alert(bustResult.reason);
+        clearAllDarts();
+        resetMultiplierButtons(container);
+        updateDartDisplays(container);
+        submitBtn.textContent = 'Weiter →';
+
+        // Spieler wechseln bei Bust
+        store.setCurrentPlayer(switchPlayer(currentPlayer));
+        updateRestpunkteUI();
         return;
       }
 
-      currentInput = '';
-      updateScoreDisplay();
-      await handleScoreSubmit(score, { bestSet, bestLeg });
-    });
-  }
+      // Wurf in History speichern
+      store.addThrow({
+        player: currentPlayer,
+        score,
+        remP1: store.getRemainingP1(),
+        remP2: store.getRemainingP2(),
+        legsWon: store.getLegsWon(),
+        setsWon: store.getSetsWon(),
+        legNo: store.getCurrentLegNo(),
+        setNo: store.getCurrentSetNo(),
+        bullfinish: store.getBullfinish(),
+        legStarter: store.getLegStarter(),
+        gameStarter: store.getGameStarter()
+      });
 
-  // --- No Score Button ---
-  const bustBtn = container.querySelector('#bustBtn');
-  if (bustBtn) {
-    bustBtn.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      currentInput = '';
-      updateScoreDisplay();
-      await processScore(0, { bestSet, bestLeg });
+      // Wurf in DB speichern
+      const leg = store.getCurrentLeg();
+      if (match && leg) {
+        await saveThrow({
+          matchId: match.id,
+          legId: leg.id,
+          playerId: getPlayerId(match, currentPlayer),
+          dart1: darts[0] * dartMultipliers[0],
+          dart2: darts[1] * dartMultipliers[1],
+          dart3: darts[2] * dartMultipliers[2],
+          total: score,
+          isFinish: remaining - score === 0,
+          orderNo: store.getThrowHistory().length
+        });
+      }
+
+      // Remaining aktualisieren
+      store.setRemaining(currentPlayer, remaining - score);
+
+      // Spieler wechseln
+      store.setCurrentPlayer(switchPlayer(currentPlayer));
+
+      // UI aktualisieren
+      updateRestpunkteUI();
+      updateSetsLegsUI(bestSet, bestLeg);
+      updateAverages();
+      updateDetailedStats();
+
+      // Keypad zurücksetzen
+      clearAllDarts();
+      resetMultiplierButtons(container);
+      updateDartDisplays(container);
+      submitBtn.textContent = 'Weiter →';
+
+      // Leg-Ende prüfen
+      if (store.getRemainingP1() === 0 || store.getRemainingP2() === 0) {
+        const matchEnded = await handleLegEnd('Keypad Submit');
+        if (matchEnded) return;
+      }
+
+      // Callback aufrufen
+      if (onScoreSubmitted) {
+        onScoreSubmitted(score);
+      }
     });
   }
+}
+
+/**
+ * Setzt die Multiplier-Buttons auf Single zurück
+ */
+function resetMultiplierButtons(container) {
+  container.querySelectorAll('.mult-btn').forEach(btn => {
+    const mult = parseInt(btn.getAttribute('data-mult'));
+    if (mult === MULTIPLIER.SINGLE) {
+      btn.classList.add('ring-2', 'ring-white', 'ring-offset-2');
+    } else {
+      btn.classList.remove('ring-2', 'ring-white', 'ring-offset-2');
+    }
+  });
 }
