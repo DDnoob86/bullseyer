@@ -273,34 +273,38 @@ function showMatchEndScreen(match, winner, setsWon, allMatchThrows, legResults) 
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead>
-              <tr class="border-b-2 border-blue-200 dark:border-blue-700 text-gray-600 dark:text-gray-400">
-                <th class="py-2 px-1 text-left">Set</th>
-                <th class="py-2 px-1 text-left">Leg</th>
-                <th class="py-2 px-1 text-center">Gewinner</th>
-                <th class="py-2 px-1 text-center" title="Darts ${names.p1}">${names.p1.substring(0,8)}</th>
-                <th class="py-2 px-1 text-center" title="Darts ${names.p2}">${names.p2.substring(0,8)}</th>
-                <th class="py-2 px-1 text-center">Ø P1</th>
-                <th class="py-2 px-1 text-center">Ø P2</th>
-                <th class="py-2 px-1 text-center">Checkout</th>
-                <th class="py-2 px-1 text-center">🎯</th>
+              <!-- Spieler-Header -->
+              <tr class="text-xs">
+                <th colspan="2"></th>
+                <th colspan="2" class="py-1 text-center text-emerald-700 dark:text-emerald-400 font-bold border-b-2 border-emerald-400">${names.p1}</th>
+                <th colspan="2" class="py-1 text-center text-rose-700 dark:text-rose-400 font-bold border-b-2 border-rose-400">${names.p2}</th>
+                <th colspan="2"></th>
+              </tr>
+              <!-- Spalten-Header -->
+              <tr class="border-b-2 border-blue-200 dark:border-blue-700 text-gray-500 dark:text-gray-400 text-xs">
+                <th class="py-2 px-1">Set</th>
+                <th class="py-2 px-1">Leg</th>
+                <th class="py-2 px-1 text-center bg-emerald-50 dark:bg-emerald-900/20">Darts</th>
+                <th class="py-2 px-1 text-center bg-emerald-50 dark:bg-emerald-900/20">Ø</th>
+                <th class="py-2 px-1 text-center bg-rose-50 dark:bg-rose-900/20">Darts</th>
+                <th class="py-2 px-1 text-center bg-rose-50 dark:bg-rose-900/20">Ø</th>
+                <th class="py-2 px-1 text-center">Finish</th>
+                <th class="py-2 px-1 text-center">🐂</th>
               </tr>
             </thead>
             <tbody>
               ${legResults.map((l, i) => {
                 const isP1 = l.winner === PLAYER.P1;
-                const winColor = isP1 ? 'text-emerald-700 dark:text-emerald-400' : 'text-rose-700 dark:text-rose-400';
                 const bgColor = i % 2 === 0 ? 'bg-gray-50 dark:bg-gray-700/30' : '';
-                const wName = isP1 ? names.p1 : names.p2;
                 return `
                   <tr class="${bgColor} border-b border-gray-100 dark:border-gray-700">
-                    <td class="py-2 px-1 text-gray-600 dark:text-gray-400">${l.setNo}</td>
-                    <td class="py-2 px-1 text-gray-600 dark:text-gray-400">${l.legNo}</td>
-                    <td class="py-2 px-1 text-center font-bold ${winColor}">${wName}</td>
-                    <td class="py-2 px-1 text-center ${isP1 ? 'font-bold text-emerald-600' : ''}">${l.p1Darts}d</td>
-                    <td class="py-2 px-1 text-center ${!isP1 ? 'font-bold text-rose-600' : ''}">${l.p2Darts}d</td>
-                    <td class="py-2 px-1 text-center text-gray-700 dark:text-gray-300">${l.p1Avg}</td>
-                    <td class="py-2 px-1 text-center text-gray-700 dark:text-gray-300">${l.p2Avg}</td>
-                    <td class="py-2 px-1 text-center font-semibold ${l.checkoutScore > 100 ? 'text-amber-600 dark:text-amber-400' : ''}">${l.checkoutScore}</td>
+                    <td class="py-2 px-1 text-gray-500 dark:text-gray-400 text-center">${l.setNo}</td>
+                    <td class="py-2 px-1 text-gray-500 dark:text-gray-400 text-center">${l.legNo}</td>
+                    <td class="py-2 px-1 text-center bg-emerald-50/50 dark:bg-emerald-900/10 ${isP1 ? 'font-bold text-emerald-700 dark:text-emerald-400' : 'text-gray-500 dark:text-gray-400'}">${l.p1Darts}${isP1 ? ' ✓' : ''}</td>
+                    <td class="py-2 px-1 text-center bg-emerald-50/50 dark:bg-emerald-900/10 ${isP1 ? 'font-semibold text-emerald-600' : 'text-gray-500 dark:text-gray-400'}">${l.p1Avg}</td>
+                    <td class="py-2 px-1 text-center bg-rose-50/50 dark:bg-rose-900/10 ${!isP1 ? 'font-bold text-rose-700 dark:text-rose-400' : 'text-gray-500 dark:text-gray-400'}">${l.p2Darts}${!isP1 ? ' ✓' : ''}</td>
+                    <td class="py-2 px-1 text-center bg-rose-50/50 dark:bg-rose-900/10 ${!isP1 ? 'font-semibold text-rose-600' : 'text-gray-500 dark:text-gray-400'}">${l.p2Avg}</td>
+                    <td class="py-2 px-1 text-center font-semibold ${l.checkoutScore > 100 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-700 dark:text-gray-300'}">${l.checkoutScore}<span class="text-xs text-gray-400 ml-0.5">(${l.finishDarts}d)</span></td>
                     <td class="py-2 px-1 text-center">${l.bullfinish ? '🐂' : ''}</td>
                   </tr>
                 `;
@@ -313,23 +317,42 @@ function showMatchEndScreen(match, winner, setsWon, allMatchThrows, legResults) 
       ${highFinishes.length > 0 ? `
       <!-- High Finishes -->
       <div class="bg-white dark:bg-gray-800 rounded-xl p-5 mb-4 shadow-xl border-2 border-amber-300 dark:border-amber-600">
-        <h2 class="text-xl font-bold mb-3 text-center text-amber-800 dark:text-amber-400">🔥 High Finishes (100+)</h2>
-        <div class="space-y-2">
-          ${highFinishes.map(hf => {
-            const color = hf.playerKey === PLAYER.P1 ? 'emerald' : 'rose';
-            return `
-              <div class="flex items-center justify-between bg-gradient-to-r from-${color}-50 to-${color}-100 dark:from-${color}-900/30 dark:to-${color}-800/30 border-l-4 border-${color}-500 rounded-r-lg p-3">
-                <div>
-                  <span class="font-bold text-${color}-700 dark:text-${color}-400">${hf.player}</span>
-                  <span class="text-gray-500 dark:text-gray-400 text-sm ml-2">Set ${hf.setNo} Leg ${hf.legNo}</span>
-                </div>
-                <div class="text-right">
-                  <span class="text-2xl font-bold text-amber-600 dark:text-amber-400">${hf.score}</span>
-                  <span class="text-gray-500 dark:text-gray-400 text-sm ml-1">(${hf.darts}d)</span>
-                </div>
+        <h2 class="text-xl font-bold mb-4 text-center text-amber-800 dark:text-amber-400">🔥 High Finishes (100+)</h2>
+        <div class="grid grid-cols-2 gap-4">
+          <!-- P1 High Finishes -->
+          <div>
+            <h3 class="text-sm font-bold text-emerald-700 dark:text-emerald-400 text-center mb-2 pb-1 border-b-2 border-emerald-300">${names.p1}</h3>
+            ${highFinishes.filter(hf => hf.playerKey === PLAYER.P1).length > 0 ? `
+              <div class="space-y-2">
+                ${highFinishes.filter(hf => hf.playerKey === PLAYER.P1).map(hf => `
+                  <div class="flex items-center justify-between bg-gradient-to-r from-emerald-50 to-emerald-100 dark:from-emerald-900/30 dark:to-emerald-800/30 border-l-4 border-emerald-500 rounded-r-lg p-2.5">
+                    <span class="text-xs text-gray-500 dark:text-gray-400">S${hf.setNo} L${hf.legNo}</span>
+                    <div>
+                      <span class="text-xl font-bold text-amber-600 dark:text-amber-400">${hf.score}</span>
+                      <span class="text-xs text-gray-500 dark:text-gray-400 ml-1">(${hf.darts}d)</span>
+                    </div>
+                  </div>
+                `).join('')}
               </div>
-            `;
-          }).join('')}
+            ` : '<p class="text-center text-gray-400 dark:text-gray-500 text-sm py-3">—</p>'}
+          </div>
+          <!-- P2 High Finishes -->
+          <div>
+            <h3 class="text-sm font-bold text-rose-700 dark:text-rose-400 text-center mb-2 pb-1 border-b-2 border-rose-300">${names.p2}</h3>
+            ${highFinishes.filter(hf => hf.playerKey === PLAYER.P2).length > 0 ? `
+              <div class="space-y-2">
+                ${highFinishes.filter(hf => hf.playerKey === PLAYER.P2).map(hf => `
+                  <div class="flex items-center justify-between bg-gradient-to-r from-rose-50 to-rose-100 dark:from-rose-900/30 dark:to-rose-800/30 border-l-4 border-rose-500 rounded-r-lg p-2.5">
+                    <span class="text-xs text-gray-500 dark:text-gray-400">S${hf.setNo} L${hf.legNo}</span>
+                    <div>
+                      <span class="text-xl font-bold text-amber-600 dark:text-amber-400">${hf.score}</span>
+                      <span class="text-xs text-gray-500 dark:text-gray-400 ml-1">(${hf.darts}d)</span>
+                    </div>
+                  </div>
+                `).join('')}
+              </div>
+            ` : '<p class="text-center text-gray-400 dark:text-gray-500 text-sm py-3">—</p>'}
+          </div>
         </div>
       </div>
       ` : ''}
@@ -337,17 +360,34 @@ function showMatchEndScreen(match, winner, setsWon, allMatchThrows, legResults) 
       ${bullFinishes.length > 0 ? `
       <!-- Bullfinishes -->
       <div class="bg-white dark:bg-gray-800 rounded-xl p-5 mb-4 shadow-xl border-2 border-red-300 dark:border-red-600">
-        <h2 class="text-xl font-bold mb-3 text-center text-red-800 dark:text-red-400">🐂 Bullfinishes</h2>
-        <div class="flex flex-wrap gap-2 justify-center">
-          ${bullFinishes.map(bf => {
-            const color = bf.playerKey === PLAYER.P1 ? 'emerald' : 'rose';
-            return `
-              <div class="bg-gradient-to-br from-${color}-100 to-${color}-200 dark:from-${color}-900/40 dark:to-${color}-800/40 border-2 border-${color}-400 rounded-lg px-3 py-2 text-center">
-                <div class="font-bold text-${color}-700 dark:text-${color}-400">${bf.player}</div>
-                <div class="text-xs text-gray-500 dark:text-gray-400">S${bf.setNo} L${bf.legNo}</div>
+        <h2 class="text-xl font-bold mb-4 text-center text-red-800 dark:text-red-400">🐂 Bullfinishes</h2>
+        <div class="grid grid-cols-2 gap-4">
+          <div>
+            <h3 class="text-sm font-bold text-emerald-700 dark:text-emerald-400 text-center mb-2 pb-1 border-b-2 border-emerald-300">${names.p1}</h3>
+            ${bullFinishes.filter(b => b.playerKey === PLAYER.P1).length > 0 ? `
+              <div class="flex flex-wrap gap-2 justify-center">
+                ${bullFinishes.filter(b => b.playerKey === PLAYER.P1).map(bf => `
+                  <div class="bg-gradient-to-br from-emerald-100 to-emerald-200 dark:from-emerald-900/40 dark:to-emerald-800/40 border-2 border-emerald-400 rounded-lg px-3 py-2 text-center">
+                    <div class="text-lg">🐂</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">S${bf.setNo} L${bf.legNo}</div>
+                  </div>
+                `).join('')}
               </div>
-            `;
-          }).join('')}
+            ` : '<p class="text-center text-gray-400 dark:text-gray-500 text-sm py-3">—</p>'}
+          </div>
+          <div>
+            <h3 class="text-sm font-bold text-rose-700 dark:text-rose-400 text-center mb-2 pb-1 border-b-2 border-rose-300">${names.p2}</h3>
+            ${bullFinishes.filter(b => b.playerKey === PLAYER.P2).length > 0 ? `
+              <div class="flex flex-wrap gap-2 justify-center">
+                ${bullFinishes.filter(b => b.playerKey === PLAYER.P2).map(bf => `
+                  <div class="bg-gradient-to-br from-rose-100 to-rose-200 dark:from-rose-900/40 dark:to-rose-800/40 border-2 border-rose-400 rounded-lg px-3 py-2 text-center">
+                    <div class="text-lg">🐂</div>
+                    <div class="text-xs text-gray-500 dark:text-gray-400">S${bf.setNo} L${bf.legNo}</div>
+                  </div>
+                `).join('')}
+              </div>
+            ` : '<p class="text-center text-gray-400 dark:text-gray-500 text-sm py-3">—</p>'}
+          </div>
         </div>
       </div>
       ` : ''}

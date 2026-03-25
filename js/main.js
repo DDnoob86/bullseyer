@@ -107,7 +107,7 @@ function renderRegister() {
         password: password.value,
         options: { data: { name: name.value.trim() } }
       });
-      alert('Bestätigungs‑Mail verschickt!');
+      alert('Bestätigungs-Mail verschickt!');
       window.location.hash = '#/login';
     } catch (err) {
       alert(err.error_description || err.message);
@@ -126,7 +126,7 @@ async function renderDashboard() {
       <button id="logoutBtn" class="absolute top-4 right-4">Logout</button>
       <h2 class="text-2xl text-center mt-8">Dashboard</h2>
     </div>
-    <p class="text-center mt-4">Lade Spieler…</p>
+    <p class="text-center mt-4">Lade Spieler...</p>
     <div id="openMatches" class="mt-6"></div>
   `;
   // Logout-Handler
@@ -279,6 +279,23 @@ async function renderDashboard() {
           <p class="text-xs text-gray-500 mt-2">Matches werden gleichmäßig auf Boards verteilt</p>
         </div>
 
+        <!-- Spieltag-Vorlagen -->
+        <div class="mb-6">
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200">📋 Spieltag-Vorlage</h3>
+          </div>
+          <div id="templateArea" class="flex flex-wrap gap-2 mb-3">
+            <!-- Wird dynamisch befüllt -->
+          </div>
+          <div class="flex gap-2">
+            <input id="templateNameInput" type="text" placeholder="Vorlagenname..." maxlength="30" class="flex-1 px-3 py-2 border-2 border-gray-300 rounded-lg text-sm focus:border-rose-400 focus:ring-1 focus:ring-rose-200" />
+            <button type="button" id="saveTemplateBtn" class="bg-gradient-to-r from-violet-500 to-violet-600 hover:from-violet-600 hover:to-violet-700 text-white px-4 py-2 rounded-lg font-semibold text-sm shadow transition-all">
+              💾 Speichern
+            </button>
+          </div>
+          <p class="text-xs text-gray-500 mt-1">Speichert ausgewählte Spieler + Einstellungen als Vorlage</p>
+        </div>
+
         <div class="mb-6">
           <h3 class="text-lg font-bold text-gray-800 dark:text-gray-200 mb-3">Spieler auswählen</h3>
           <div id="playerList" class="grid grid-cols-2 sm:grid-cols-3 gap-3 max-h-64 overflow-y-auto p-4 bg-gradient-to-br from-gray-50 to-gray-100 border-2 border-gray-300 rounded-lg"></div>
@@ -329,7 +346,154 @@ async function renderDashboard() {
     playerListEl.appendChild(div);
   });
 
-  // 5) Form-Submit → Spieltag & Matches anlegen
+  // ---- SPIELTAG-VORLAGEN ----
+  const TEMPLATE_KEY = 'bullseyer_gameday_templates';
+
+  function loadTemplates() {
+    try { return JSON.parse(localStorage.getItem(TEMPLATE_KEY) || '[]'); }
+    catch { return []; }
+  }
+
+  function saveTemplates(templates) {
+    localStorage.setItem(TEMPLATE_KEY, JSON.stringify(templates));
+  }
+
+  // Hilfsfunktion: Spieler-Auswahl programmatisch setzen
+  function applyPlayerSelection(playerIds) {
+    selectedPlayers.clear();
+    // Alle Spieler-DIVs zurücksetzen
+    playerListEl.querySelectorAll('div').forEach(div => {
+      div.className = 'cursor-pointer text-center py-3 px-4 bg-white dark:bg-gray-800 border-2 border-gray-300 dark:border-gray-600 rounded-lg hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-md transition-all duration-200 font-semibold text-gray-800 dark:text-gray-200';
+    });
+    // Gewünschte Spieler selektieren
+    playerIds.forEach(id => {
+      const player = players.find(p => p.id === id);
+      if (!player) return;
+      selectedPlayers.add(id);
+      // Finde das passende DIV
+      const divs = playerListEl.querySelectorAll('div');
+      divs.forEach(div => {
+        if (div.textContent === player.name) {
+          div.className = 'cursor-pointer text-center py-3 px-4 bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/40 dark:to-blue-800/40 border-2 border-blue-600 dark:border-blue-500 rounded-lg hover:shadow-2xl transition-all duration-200 font-bold text-blue-700 dark:text-blue-300 ring-4 ring-blue-300 dark:ring-blue-500/50 shadow-xl scale-105';
+        }
+      });
+    });
+  }
+
+  function renderTemplates() {
+    const templates = loadTemplates();
+    const area = document.getElementById('templateArea');
+    if (!area) return;
+
+    if (templates.length === 0) {
+      area.innerHTML = '<p class="text-sm text-gray-400">Keine Vorlagen gespeichert</p>';
+      return;
+    }
+
+    area.innerHTML = templates.map((t, i) => {
+      const playerNames = t.playerIds
+        .map(id => players.find(p => p.id === id)?.name)
+        .filter(Boolean);
+      return `
+        <div class="group relative">
+          <button type="button" data-template-idx="${i}" class="template-load-btn bg-gradient-to-br from-violet-100 to-violet-200 dark:from-violet-900/40 dark:to-violet-800/40 border-2 border-violet-400 dark:border-violet-500 rounded-lg px-4 py-2.5 hover:shadow-lg hover:scale-105 transition-all text-left">
+            <div class="font-bold text-violet-800 dark:text-violet-300 text-sm">${t.name}</div>
+            <div class="text-xs text-gray-600 dark:text-gray-400">${playerNames.join(', ')}</div>
+            <div class="text-xs text-violet-600 dark:text-violet-400 mt-0.5">BO${t.boSets} Sets / BO${t.boLegs} Legs${t.doubleOut ? ' • DO' : ''} • ${t.boards}B</div>
+          </button>
+          <button type="button" data-template-del="${i}" class="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white w-6 h-6 rounded-full text-xs font-bold shadow-lg opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+        </div>
+      `;
+    }).join('');
+
+    // Lade-Handler
+    area.querySelectorAll('.template-load-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.templateIdx);
+        const t = templates[idx];
+        if (!t) return;
+
+        // Spieler-Auswahl setzen
+        applyPlayerSelection(t.playerIds);
+
+        // Formular-Werte setzen
+        const form = document.getElementById('cfgForm');
+        if (form) {
+          form.elements.boSets.value = t.boSets || 3;
+          form.elements.boLegs.value = t.boLegs || 3;
+          form.elements.doubleOut.checked = t.doubleOut !== false;
+          form.elements.numBoards.value = t.boards || 1;
+        }
+      });
+    });
+
+    // Löschen-Handler
+    area.querySelectorAll('[data-template-del]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(btn.dataset.templateDel);
+        const templates = loadTemplates();
+        templates.splice(idx, 1);
+        saveTemplates(templates);
+        renderTemplates();
+      });
+    });
+  }
+
+  // Vorlage speichern
+  document.getElementById('saveTemplateBtn').addEventListener('click', () => {
+    const nameInput = document.getElementById('templateNameInput');
+    const name = nameInput.value.trim();
+    if (!name) {
+      nameInput.classList.add('border-red-500');
+      nameInput.placeholder = 'Name eingeben!';
+      setTimeout(() => {
+        nameInput.classList.remove('border-red-500');
+        nameInput.placeholder = 'Vorlagenname…';
+      }, 2000);
+      return;
+    }
+
+    if (selectedPlayers.size < 2) {
+      nameInput.value = '';
+      nameInput.placeholder = 'Erst Spieler wählen!';
+      nameInput.classList.add('border-red-500');
+      setTimeout(() => {
+        nameInput.classList.remove('border-red-500');
+        nameInput.placeholder = 'Vorlagenname…';
+      }, 2000);
+      return;
+    }
+
+    const form = document.getElementById('cfgForm');
+    const template = {
+      name,
+      playerIds: [...selectedPlayers],
+      boSets: parseInt(form.elements.boSets.value) || 3,
+      boLegs: parseInt(form.elements.boLegs.value) || 3,
+      doubleOut: form.elements.doubleOut.checked,
+      boards: parseInt(form.elements.numBoards.value) || 1,
+      createdAt: new Date().toISOString()
+    };
+
+    const templates = loadTemplates();
+    // Überschreibe existierende Vorlage mit gleichem Namen
+    const existingIdx = templates.findIndex(t => t.name === name);
+    if (existingIdx >= 0) {
+      templates[existingIdx] = template;
+    } else {
+      templates.push(template);
+    }
+    saveTemplates(templates);
+
+    nameInput.value = '';
+    renderTemplates();
+  });
+
+  // Initiales Rendering der Vorlagen
+  renderTemplates();
+
+  // 5) Form-Submit → Spieltag & Matches anlegen
   document.getElementById('cfgForm').onsubmit = async e => {
     e.preventDefault();
     const submitBtn = e.target.querySelector('button[type="submit"], button:not([type])');
@@ -363,7 +527,7 @@ async function renderDashboard() {
           submitBtn.classList.remove('bg-red-600');
         }, 3000);
       } else {
-        alert('Best‑of muss ungerade sein (1,3,5…)');
+        alert('Best-of muss ungerade sein (1,3,5...)');
       }
       return;
     }
@@ -374,7 +538,7 @@ async function renderDashboard() {
       .insert({ date: new Date().toISOString().slice(0, 10) })
       .select()
       .single();
-    if (gdErr) { 
+    if (gdErr) {
       if (submitBtn) {
         submitBtn.textContent = 'Fehler beim Anlegen des Spieltags';
         submitBtn.classList.add('bg-red-600');
@@ -396,49 +560,12 @@ async function renderDashboard() {
     // Filtere ungültige Paarungen raus (z.B. [id, null] oder [null, id])
     const validPairings = pairings.filter(([p1, p2]) => p1 && p2);
 
-    // NEU: Prüfe, ob für den Tag bereits Paarungen existieren (egal ob offen oder beendet)
-    const { data: matchesToday, error: matchesTodayErr } = await supabase
-      .from('matches')
-      .select('p1_id, p2_id, gameday_id')
-      .in('gameday_id', [gd.id]);
-    if (matchesTodayErr) {
-      if (submitBtn) {
-        submitBtn.textContent = 'Fehler beim Prüfen der Paarungen';
-        submitBtn.classList.add('bg-red-600');
-        setTimeout(() => {
-          submitBtn.textContent = defaultBtnText;
-          submitBtn.classList.remove('bg-red-600');
-        }, 4000);
-      } else {
-        alert('Fehler beim Prüfen auf bestehende Paarungen: ' + matchesTodayErr.message);
-      }
-      return;
-    }
-    // Vergleiche beide Richtungen (p1-p2 und p2-p1)
-    const alreadyExists = validPairings.filter(([p1, p2]) =>
-      matchesToday.some(m => (m.p1_id === p1 && m.p2_id === p2) || (m.p1_id === p2 && m.p2_id === p1))
-    );
-    if (alreadyExists.length) {
-      if (submitBtn) {
-        submitBtn.textContent = 'Spielerpaarungen schon angelegt!';
-        submitBtn.classList.add('bg-red-600');
-        setTimeout(() => {
-          submitBtn.textContent = defaultBtnText;
-          submitBtn.classList.remove('bg-red-600');
-        }, 5000);
-      } else {
-        alert('Für folgende Paarungen existiert heute bereits ein Match (offen oder beendet):\n' +
-          alreadyExists.map(([p1, p2]) => `${players.find(x=>x.id===p1)?.name || p1} vs ${players.find(x=>x.id===p2)?.name || p2}`).join('\n') +
-          '\nJede Paarung darf pro Spieltag nur einmal existieren!');
-      }
-      return;
-    }
+    // Duplikat-Check entfernt: Jeder Spieltag erzeugt einen neuen Gameday-Eintrag,
+    // daher sind Paarungen immer neu und erlaubt.
 
     const boards = parseInt(numBoards.value, 10) || 1;
 
     const matchesToInsert = validPairings.map(([p1, p2], i) => {
-      const [a, b] = [p1, p2].sort(); // IDs sortieren für pair_key
-      // Verteile Matches gleichmäßig auf Boards (Round-Robin)
       const boardNum = (i % boards) + 1;
       return {
         gameday_id: gd.id,
@@ -447,9 +574,8 @@ async function renderDashboard() {
         best_of_sets: boS,
         best_of_legs: boL,
         double_out: doubleOut.checked,
-        board: boardNum, // Dynamische Board-Zuweisung
-        pair_key: `${a}:${b}`, // NEU: Eindeutige Paarung pro Spieltag
-        finished_at: null, // Explizit auf null setzen für offene Matches
+        board: boardNum,
+        finished_at: null,
         winner_id: null
       };
     });
@@ -463,22 +589,12 @@ async function renderDashboard() {
       .insert(matchesToInsert);
     if (matchErr) {
       if (submitBtn) {
-        // Prüfe auf Unique-Fehler (doppelte Paarung)
-        if (matchErr.message && matchErr.message.includes('duplicate key value') && matchErr.message.includes('pair_key')) {
-          submitBtn.textContent = 'Spielerpaarungen schon angelegt!';
-          submitBtn.classList.add('bg-red-600', 'hover:bg-red-700');
-          setTimeout(() => {
-            submitBtn.textContent = defaultBtnText;
-            submitBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
-          }, 5000);
-        } else {
-          submitBtn.textContent = 'Fehler beim Anlegen der Matches!';
-          submitBtn.classList.add('bg-red-600', 'hover:bg-red-700');
-          setTimeout(() => {
-            submitBtn.textContent = defaultBtnText;
-            submitBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
-          }, 4000);
-        }
+        submitBtn.textContent = 'Fehler beim Anlegen der Matches!';
+        submitBtn.classList.add('bg-red-600');
+        setTimeout(() => {
+          submitBtn.textContent = defaultBtnText;
+          submitBtn.classList.remove('bg-red-600');
+        }, 4000);
       } else {
         alert(`Fehler beim Anlegen der Matches:\n${matchErr.message}`);
       }
@@ -765,7 +881,7 @@ async function fetchOpenMatches(board, withDate = false) {
 
 function renderStats() {
   // NEU: Statistik aus Tabelle legs und throws
-  document.getElementById('app').innerHTML = '<p class="text-center mt-8">Lade Statistik…</p>';
+  document.getElementById('app').innerHTML = '<p class="text-center mt-8">Lade Statistik...</p>';
   loadStats();
 }
 
