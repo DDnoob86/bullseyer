@@ -44,48 +44,64 @@ The app uses a hash-based router (`window.onhashchange`) with the following rout
 
 ### Module Organization
 
-**`js/main.js`** - Main application orchestrator
-- Route handling and page rendering
-- Dashboard logic (player selection, game day creation, round-robin pairing)
-- Match selection and initialization
-- Global state management for current match/leg/set
+**`js/main.js`** - Thin application orchestrator (~50 lines)
+- Registers routes via `router.js`
+- Mock-mode auto-login
+- Auth state listener setup
+
+**`js/router.js`** - Hash-based SPA router
+- Route registration and matching (longest prefix first)
+- Automatic cleanup of previous page on route change
+- Active navigation highlighting
 
 **`js/auth.js`** - Authentication wrapper
-- `signUp()` - User registration
-- `login()` - Email/password authentication
-- `logout()` - Session termination
-- `getCurrentUser()` - Session retrieval
-- `onAuthChange()` - Auth state listener
+- `signUp()`, `login()`, `logout()`, `getCurrentUser()`, `onAuthChange()`
 
 **`js/supabase.js`** - Database client configuration
-- Supabase client initialization
-- Real-time subscription helper (`subscribeTo()`)
-- **Contains credentials** - anon key is exposed (Row-Level Security enforced on backend)
+- Supabase client initialization + Real-time subscription helper
+- **Contains credentials** - anon key is exposed (RLS enforced on backend)
 
-**`js/pairing.js`** - Match pairing logic
-- `generateRoundRobin()` - Creates all unique player pairings for a game day
+**`js/pairing.js`** - Round-robin scheduling with simultaneous rounds
+- `generateRoundRobinRounds()` - Circle method algorithm
+- `distributeToBoards()` - Distributes rounds across boards
 
 **`js/scorer.js`** - Leg scoring logic
 - `Leg` class - Manages individual leg state (501 down)
-  - Tracks throws, remaining scores, double-in/double-out validation
-  - Bust detection, winner determination
-  - Statistics: duration, throw count, 3-dart average
 
-**`js/livescoring.js`** - Live scoring UI and state management
-- `renderLiveScorer()` - Main scoring interface render function
-- Complex state management using both local variables and `window` globals
-- Event delegation for score input (digital keypad + quick-score buttons)
-- Automatic leg/set progression when reaching 0
-- Undo functionality for throw correction
-- Real-time average calculation (both leg and match averages)
-- `resetLeg()` - Creates new leg in database and returns `Leg` instance
-- `saveLeg()` - Persists completed leg to Supabase
+**UI Layer (`js/ui/`):**
 
-**`js/export.js`** - Data export
-- `exportGameDay()` - Exports match data to Excel using SheetJS
+- **`ui/auth.js`** - Login & registration pages
+- **`ui/dashboard.js`** - Game day management, player selection, templates, config form
+- **`ui/scorer.js`** - Board selection, match list, match start, active match resolution
+- **`ui/players.js`** - Player CRUD management
+- **`ui/stats.js`** - Statistics page with ranking, player detail, CSV export
 
-**`js/stats.js`** - Statistics aggregation
-- `aggregateStats()` - Calculates player statistics from throws
+**Livescorer (`js/ui/livescorer/`):**
+
+- **`index.js`** - Main render function, HTML building, component coordination
+- **`score-processor.js`** - **Single source of truth** for score processing (bust checks, checkout dialog, DB save, state update). Used by both Quick-Score buttons and Numpad.
+- **`events.js`** - Quick-Score event delegation, undo handler, starter selection, back button
+- **`keypad.js`** - Numpad input, score/rest mode toggle, input validation
+- **`display.js`** - All UI update functions (remaining, sets/legs, averages, player indicator, checkout hints)
+- **`game-logic.js`** - Leg/Set/Match end handling, match end screen with statistics
+- **`dialogs.js`** - Checkout dialog, bust toast, leg/set won overlays
+
+**Services (`js/services/`):**
+
+- **`match.js`** - All match-related DB operations (CRUD for matches, legs, throws)
+- **`stats.js`** - Average calculations, season stats updates, CSV export
+
+**State (`js/state/`):**
+
+- **`store.js`** - Centralized state manager with getters, setters, batch updates, subscriber pattern
+
+**Utils (`js/utils/`):**
+
+- **`constants.js`** - Magic numbers, player keys, storage keys, dart distribution
+- **`players.js`** - Player name resolution, winner determination, player switching
+- **`checkouts.js`** - Checkout validation, suggestions, minimum darts calculation
+
+**`js/export.js`** - Excel export (SheetJS)
 
 ### Database Schema (Supabase)
 
@@ -111,35 +127,27 @@ The app uses a hash-based router (`window.onhashchange`) with the following rout
 
 ### State Management
 
-The app uses a hybrid state management approach:
-
-1. **Module-level variables** in `main.js`:
-   - `currentMatch`, `currentLeg`, `currentLegNo`, `currentSetNo`
-   - `setsWon`, `remainingP1`, `remainingP2`, `currentPlayer`
-   - Persisted via `localStorage` (keys: `bullseyer_board`, `bullseyer_currentMatchId`, `bullseyer_gameday`)
-
-2. **Window globals** in `livescoring.js`:
-   - All local state is mirrored to `window` object for event delegation handlers
-   - `window._lastRenderArgs` - Preserves render arguments between UI updates
-   - `window.throwHistory` - Undo stack for current leg
-   - `window.allMatchThrows` - Match-wide throw history for averages
-
-3. **State synchronization**:
-   - `syncLocalVars()` syncs local variables with window globals
-   - `updateStateFn()` callback propagates state changes to `main.js`
+Centralized in `js/state/store.js`:
+- Private state object with getters/setters (no window globals)
+- Subscriber pattern for reactive updates
+- Batch updates via `updateState()`
+- Lifecycle methods: `initNewMatch()`, `startNewLeg()`, `startNewSet()`, `resetState()`
+- Persisted via `localStorage` (keys: `bullseyer_board`, `bullseyer_currentMatchId`, `bullseyer_gameday`)
 
 ### Event Handling Patterns
 
-**Event Delegation** (livescoring.js):
-- Global `click` listener on `document.body` with `window._bullseyerDelegationHandler`
-- Handles quick-score buttons with `data-score` attribute
+**Event Delegation** (`events.js`):
+- Global `click` listener on `document.body` for quick-score buttons
+- Cleaned up via `cleanupEventDelegation()` on route change (called by router cleanup)
 - Prevents double-triggering with lock mechanism
-- Excludes keypad buttons (handled separately)
 
-**Direct Event Handlers**:
-- Keypad buttons: initialized once with `data-bullseyer-initialized` flag
+**Direct Event Handlers** (`keypad.js`):
+- Initialized once with `data-bullseyer-initialized` flag
 - Undo button: uses container-level `data-bullseyer-undo-initialized` flag
-- Submit score: manual score input handler
+
+**Route Cleanup**:
+- Router calls cleanup function returned by `renderScorer()` on route change
+- Ensures event delegation handlers are removed
 
 ### Critical Implementation Details
 
@@ -169,12 +177,14 @@ The app uses a hybrid state management approach:
 
 ## Common Gotchas
 
-- **State Synchronization**: Always use `syncLocalVars()` after modifying window globals to keep local and global state aligned
-- **UI Updates**: Call `updateRestpunkteUI()`, `updateSetsLegsUI()`, and `updateAverages()` after state changes to keep display consistent
+- **Score Processing**: All score logic (bust checks, checkout, DB save) goes through `score-processor.js` — never duplicate this logic
+- **UI Updates**: Call `updateAllDisplays(bestSet, bestLeg)` after state changes — it handles all sub-updates
 - **Event Handler Duplication**: Check for `data-bullseyer-initialized` flags before adding event listeners to prevent duplicates on re-renders
-- **Leg Creation Timing**: `resetLeg()` is async (inserts to DB) - ensure it completes before allowing throws
+- **Route Cleanup**: `renderScorer()` returns a cleanup function — the router calls it automatically on route change
+- **Leg Creation Timing**: `createLeg()` fires async DB insert (fire-and-forget) — leg ID is generated client-side
 - **Player IDs**: Use string comparison for player IDs from Supabase (UUIDs), not numeric comparison
 - **Board Comparison**: Convert board numbers to strings for comparison (`String(board)`)
+- **Navigation**: Use `navigateTo('#/route')` from `router.js` instead of `window.location.hash` directly
 
 ## Supabase Configuration
 
