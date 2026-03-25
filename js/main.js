@@ -1,7 +1,7 @@
 import { login, signUp, logout } from './auth.js';
 // ⚠️ MOCK-MODUS FÜR TESTS - Ändere zu './supabase.js' für echtes Backend
 import { supabase } from './supabase-mock.js';
-import { generateRoundRobin } from './pairing.js';
+import { generateRoundRobin, generateRoundRobinRounds, distributeToBoards } from './pairing.js';
 import { Leg } from './scorer.js';
 import { exportGameDay } from './export.js';
 // Neue modulare Livescorer-Imports
@@ -553,32 +553,26 @@ async function renderDashboard() {
     }
     localStorage.setItem('bullseyer_gameday', gd.id);
 
-    // Paarungen aus Round-Robin → nur Zweier-Arrays
-    const pairings = generateRoundRobin([...selectedPlayers]);
-    console.log('Pairings aus generateRoundRobin:', pairings);
-
-    // Filtere ungültige Paarungen raus (z.B. [id, null] oder [null, id])
-    const validPairings = pairings.filter(([p1, p2]) => p1 && p2);
-
-    // Duplikat-Check entfernt: Jeder Spieltag erzeugt einen neuen Gameday-Eintrag,
-    // daher sind Paarungen immer neu und erlaubt.
-
+    // Round-Robin mit echten Runden (kein Spieler doppelt pro Runde)
     const boards = parseInt(numBoards.value, 10) || 1;
+    const rounds = generateRoundRobinRounds([...selectedPlayers]);
+    const distributed = distributeToBoards(rounds, boards);
 
-    const matchesToInsert = validPairings.map(([p1, p2], i) => {
-      const boardNum = (i % boards) + 1;
-      return {
-        gameday_id: gd.id,
-        p1_id: p1,
-        p2_id: p2,
-        best_of_sets: boS,
-        best_of_legs: boL,
-        double_out: doubleOut.checked,
-        board: boardNum,
-        finished_at: null,
-        winner_id: null
-      };
-    });
+    console.log('[Schedule] Runden:', rounds.length, 'Matches:', distributed.length, 'Boards:', boards);
+    rounds.forEach(r => console.log(`  Runde ${r.round}:`, r.matches.length, 'simultane Matches'));
+
+    const matchesToInsert = distributed.map(m => ({
+      gameday_id: gd.id,
+      p1_id: m.p1,
+      p2_id: m.p2,
+      best_of_sets: boS,
+      best_of_legs: boL,
+      double_out: doubleOut.checked,
+      board: m.board,
+      round_no: m.round,
+      finished_at: null,
+      winner_id: null
+    }));
 
     console.log('[DEBUG] Creating matches:', matchesToInsert);
     console.log('[DEBUG] Gameday ID:', gd.id);
@@ -713,58 +707,61 @@ async function renderScorer() {
   // 2) Match-Auswahl
   const scorerContent = document.getElementById('scorerContent'); // <-- jetzt nach app.innerHTML!
   // NEU: Offene Matches mit Datum anzeigen
-  const matches = await fetchOpenMatches(currentBoard, true); // true = mit Datum
-  console.log('Matches für Board', currentBoard, matches); // Debug: Zeige geladene Matches
+  const matches = await fetchOpenMatches(currentBoard, true);
   if (!matches.length) {
-    scorerContent.innerHTML = '<p class="text-center mt-8">Kein offenes Match</p>';
+    scorerContent.innerHTML = '<p class="text-center mt-8 text-gray-500">Keine offenen Matches für Board ' + currentBoard + '</p>';
     return;
   }
-  scorerContent.innerHTML = `
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-      ${matches.map(m => `
-        <button type="button" class="group relative bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-2 border-blue-300 dark:border-blue-500 rounded-xl p-5 hover:shadow-2xl hover:scale-105 transition-all duration-300 text-left" data-mid="${m.id}">
-          <!-- Match Players -->
-          <div class="flex items-center justify-between mb-3">
-            <div class="flex-1">
-              <div class="text-xl font-bold text-blue-900 dark:text-blue-100 mb-1">
-                ${m.p1.name}
-                <span class="text-blue-600 dark:text-blue-400 mx-2">vs</span>
-                ${m.p2.name}
-              </div>
-              <div class="text-xs text-blue-700 dark:text-blue-300 flex items-center gap-2">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
-                </svg>
-                ${m.gameday?.date || ''}
-              </div>
-            </div>
-            <div class="ml-4">
-              <svg class="w-8 h-8 text-blue-600 dark:text-blue-400 group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
-              </svg>
-            </div>
-          </div>
 
-          <!-- Match Info -->
-          <div class="flex gap-3 text-xs text-blue-600 dark:text-blue-400">
-            <span class="flex items-center gap-1">
-              <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M9 2a1 1 0 000 2h2a1 1 0 100-2H9z"></path>
-                <path fill-rule="evenodd" d="M4 5a2 2 0 012-2 3 3 0 003 3h2a3 3 0 003-3 2 2 0 012 2v11a2 2 0 01-2 2H6a2 2 0 01-2-2V5zm3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3zm-3 4a1 1 0 000 2h.01a1 1 0 100-2H7zm3 0a1 1 0 000 2h3a1 1 0 100-2h-3z" clip-rule="evenodd"></path>
-              </svg>
-              Board ${currentBoard}
-            </span>
-            <span class="flex items-center gap-1">
-              <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                <path d="M2 11a1 1 0 011-1h2a1 1 0 011 1v5a1 1 0 01-1 1H3a1 1 0 01-1-1v-5zM8 7a1 1 0 011-1h2a1 1 0 011 1v9a1 1 0 01-1 1H9a1 1 0 01-1-1V7zM14 4a1 1 0 011-1h2a1 1 0 011 1v12a1 1 0 01-1 1h-2a1 1 0 01-1-1V4z"></path>
-              </svg>
-              Best of ${m.best_of_legs} Legs
-            </span>
+  // Matches nach Runden gruppieren
+  const roundsMap = new Map();
+  matches.forEach(m => {
+    const rNo = m.round_no || 0;
+    if (!roundsMap.has(rNo)) roundsMap.set(rNo, []);
+    roundsMap.get(rNo).push(m);
+  });
+  const sortedRounds = [...roundsMap.entries()].sort((a, b) => a[0] - b[0]);
+
+  // Erste nicht-leere Runde hervorheben (= nächste zu spielende Runde)
+  const firstRound = sortedRounds[0]?.[0];
+
+  scorerContent.innerHTML = sortedRounds.map(([roundNo, roundMatches]) => {
+    const isCurrentRound = roundNo === firstRound;
+    return `
+      <div class="mb-4">
+        <div class="flex items-center gap-2 mb-2">
+          <div class="text-sm font-bold ${isCurrentRound ? 'text-emerald-700 dark:text-emerald-400' : 'text-gray-500 dark:text-gray-400'}">
+            ${roundNo > 0 ? `Runde ${roundNo}` : 'Matches'}
           </div>
-        </button>
-      `).join('')}
-    </div>
-  `;
+          ${isCurrentRound ? '<span class="text-xs bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 px-2 py-0.5 rounded-full font-semibold">▶ Aktuelle Runde</span>' : ''}
+          <div class="flex-1 border-t border-gray-200 dark:border-gray-700"></div>
+          <div class="text-xs text-gray-400">${roundMatches.length} ${roundMatches.length === 1 ? 'Match' : 'Matches'}</div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+          ${roundMatches.map(m => `
+            <button type="button" class="group relative bg-gradient-to-br ${isCurrentRound ? 'from-emerald-50 to-emerald-100 dark:from-emerald-900/20 dark:to-emerald-800/20 border-emerald-400 dark:border-emerald-500' : 'from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-blue-300 dark:border-blue-500'} border-2 rounded-xl p-4 hover:shadow-2xl hover:scale-[1.02] transition-all duration-200 text-left" data-mid="${m.id}">
+              <div class="flex items-center justify-between">
+                <div class="flex-1">
+                  <div class="text-lg font-bold text-gray-900 dark:text-gray-100">
+                    ${m.p1?.name || '?'}
+                    <span class="${isCurrentRound ? 'text-emerald-600' : 'text-blue-600'} mx-2">vs</span>
+                    ${m.p2?.name || '?'}
+                  </div>
+                  <div class="flex gap-3 text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    <span>${m.gameday?.date || ''}</span>
+                    <span>BO${m.best_of_legs} Legs</span>
+                  </div>
+                </div>
+                <svg class="w-6 h-6 ${isCurrentRound ? 'text-emerald-500' : 'text-blue-400'} group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
+                </svg>
+              </div>
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
   // Event-Delegation für Touch/Click: Nur noch click-Event (iPad/iOS Fix)
   let matchSelectLock = false;
   function handleMatchSelect(e) {
@@ -841,24 +838,14 @@ async function fetchBoardsForToday() {
 
 // Holt offene Matches für ein Board, optional mit Datum
 async function fetchOpenMatches(board, withDate = false) {
-  console.log('[DEBUG] fetchOpenMatches called with board:', board, 'type:', typeof board);
-  let selectStr = 'id, p1_id, p2_id, best_of_sets, best_of_legs, board, p1:users!matches_p1_id_fkey(name), p2:users!matches_p2_id_fkey(name)';
+  let selectStr = 'id, p1_id, p2_id, best_of_sets, best_of_legs, board, round_no, p1:users!matches_p1_id_fkey(name), p2:users!matches_p2_id_fkey(name)';
   if (withDate) selectStr += ', gameday:gamedays(date)';
   const { data, error } = await supabase
     .from('matches')
     .select(selectStr)
-    .eq('board', Number(board)) // <-- Board als Zahl vergleichen!
-    .is('finished_at', null);
-  console.log('[DEBUG] fetchOpenMatches result:', {
-    board,
-    dataCount: data?.length || 0,
-    data,
-    error
-  });
-  if (data?.length > 0) {
-    console.log('[DEBUG] First match:', data[0]);
-    console.log('[DEBUG] Player names:', data[0].p1, data[0].p2);
-  }
+    .eq('board', Number(board))
+    .is('finished_at', null)
+    .order('round_no', { ascending: true });
   return data || [];
 }
 
