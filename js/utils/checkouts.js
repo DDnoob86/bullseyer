@@ -23,40 +23,6 @@ export function getCheckoutSuggestion(remaining) {
   return CHECKOUT_SUGGESTIONS[remaining] || null;
 }
 
-// Alle 1-Dart-Checkouts: Doubles (D1-D20) + Bull
-const ONE_DART_CHECKOUTS = new Set([
-  2, 4, 6, 8, 10, 12, 14, 16, 18, 20,
-  22, 24, 26, 28, 30, 32, 34, 36, 38, 40,
-  50
-]);
-
-/**
- * Gibt die minimale Dart-Anzahl für einen Checkout zurück
- * - 1 Dart: D1-D20 (gerade 2-40) + Bull (50)
- * - 2 Darts: max T20(60) + Bull(50) = 110
- * - 3 Darts: max T20(60) + T20(60) + Bull(50) = 170
- * @param {number} remaining - Der Reststand
- * @returns {number} 1, 2 oder 3
- */
-export function getMinCheckoutDarts(remaining) {
-  if (ONE_DART_CHECKOUTS.has(remaining)) return 1;
-  if (remaining <= 110) return 2;
-  return 3;
-}
-
-/**
- * Prüft ob ein Bullfinish bei diesem Checkout möglich ist
- * Bull (50) kann der letzte Dart sein wenn:
- * - Remaining === 50 (Bull direkt)
- * - Remaining > 50 und (remaining - setup) === 50 mit einem oder zwei Setup-Darts
- * Vereinfacht: bei jedem Checkout >= 50 ist Bull theoretisch eine Option
- * @param {number} remaining - Der Reststand
- * @returns {boolean}
- */
-export function isBullfinishPossible(remaining) {
-  return remaining >= 50 && isValidCheckout(remaining);
-}
-
 // Checkout-Vorschläge für gängige Reststände
 const CHECKOUT_SUGGESTIONS = {
   170: 'T20 T20 Bull',

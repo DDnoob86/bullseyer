@@ -573,10 +573,8 @@ async function renderScorer() {
       if (m) {
         // Match im Store initialisieren
         ensurePlayerNames(m);
-        store.initNewMatch({
-          match: m,
-          leg: createLeg(m, 1, 1)
-        });
+        store.initNewMatch(m);
+        store.setCurrentLeg(createLeg(m, 1, 1));
         window.location.hash = '#/livescorer';
         return;
       } else {
@@ -691,10 +689,8 @@ async function startMatch(m) {
   ensurePlayerNames(data);
 
   // Match im zentralen Store initialisieren
-  store.initNewMatch({
-    match: data,
-    leg: createLeg(data, 1, 1)
-  });
+  store.initNewMatch(data);
+  store.setCurrentLeg(createLeg(data, 1, 1));
 
   // Match-ID persistieren
   localStorage.setItem(STORAGE_KEYS.CURRENT_MATCH_ID, data.id);
