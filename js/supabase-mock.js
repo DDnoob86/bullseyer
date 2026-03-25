@@ -334,26 +334,8 @@ export function subscribeTo(table, callback) {
   return supabase.channel(table);
 }
 
-// Demo-Daten erstellen wenn leer
-if (mockDB.users.length === 0) {
-  console.log('🧪 MOCK-MODUS: Erstelle Demo-Daten...');
-
-  // Demo-Spieler
-  const demoUsers = [
-    { id: generateUUID(), name: 'Alice' },
-    { id: generateUUID(), name: 'Bob' },
-    { id: generateUUID(), name: 'Charlie' },
-    { id: generateUUID(), name: 'Diana' }
-  ];
-
-  mockDB.users = demoUsers;
-  saveDB();
-
-  console.log('✅ Demo-Spieler erstellt:', demoUsers.map(u => u.name).join(', '));
-}
-
 console.log('🧪 MOCK-MODUS AKTIV - Keine echte Supabase-Verbindung');
-console.log('📊 Verfügbare Demo-Spieler:', mockDB.users.map(u => u.name).join(', '));
+console.log('📊 Verfügbare Spieler:', mockDB.users.map(u => u.name).join(', ') || 'keine (über Spieler-Seite anlegen)');
 
 // Diagnose-Funktion für Browser-Console
 window.debugMockDB = function() {

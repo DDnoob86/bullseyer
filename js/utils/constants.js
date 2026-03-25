@@ -2,8 +2,8 @@
 
 // Spielkonfiguration
 export const START_SCORE = 501;
-export const DEFAULT_BEST_OF_LEGS = 3;
-export const DEFAULT_BEST_OF_SETS = 3;
+export const DEFAULT_BEST_OF_LEGS = 5;
+export const DEFAULT_BEST_OF_SETS = 1;
 export const DEFAULT_BOARD = 1;
 
 // Spieler-Keys

@@ -136,42 +136,26 @@ async function renderDashboard() {
     window.location.hash = '#/login';
   };
 
-  // NEU: Offene Spiele mit Datum anzeigen
-  let openMatches = [];
-  let openErr = null;
+  // Spieltage und Matches laden
+  let allMatches = [];
+  let allGamedays = [];
   try {
-    const res = await supabase
-      .from('matches')
-      .select('id, finished_at, gameday_id, board, p1:users!matches_p1_id_fkey(name), p2:users!matches_p2_id_fkey(name), gameday:gamedays(date)')
-      .is('finished_at', null)
-      .order('gameday_id', { ascending: false });
-    openMatches = res.data || [];
-    openErr = res.error;
+    const [matchRes, gamedayRes] = await Promise.all([
+      supabase
+        .from('matches')
+        .select('id, finished_at, gameday_id, board, best_of_sets, best_of_legs, double_out, round_no, p1_id, p2_id, p1:users!matches_p1_id_fkey(name), p2:users!matches_p2_id_fkey(name), gameday:gamedays(date)')
+        .order('gameday_id', { ascending: false }),
+      supabase
+        .from('gamedays')
+        .select('id, date')
+        .order('date', { ascending: false })
+    ]);
+    allMatches = matchRes.data || [];
+    allGamedays = gamedayRes.data || [];
   } catch (e) {
-    openErr = e;
-    openMatches = [];
+    console.error('[Dashboard] Fehler beim Laden:', e);
   }
-  if (!openErr && openMatches && openMatches.length) {
-    document.getElementById('openMatches').innerHTML = `
-      <div class="flex items-center justify-between mb-2">
-        <h3 class="text-lg">Offene Spiele</h3>
-        <button id="gotoScorerBtn" class="btn btn-sm bg-blue-600 text-white flex items-center gap-1">
-          Zu den Matches
-          <span aria-hidden="true">&#8594;</span>
-        </button>
-      </div>
-      <ul class="space-y-1">
-        ${openMatches.map(m => `<li class="border rounded p-2 flex justify-between items-center">
-          <span>${m.p1?.name || '?'} vs ${m.p2?.name || '?'}<br><span class="text-xs text-gray-500">${m.gameday?.date || ''}</span></span>
-          <span class="text-xs">Board ${m.board}</span>
-        </li>`).join('')}
-      </ul>
-    `;
-    // Button-Handler: Wechselt zur Scorer-Seite
-    document.getElementById('gotoScorerBtn').onclick = () => {
-      window.location.hash = '#/scorer';
-    };
-  }
+  const openMatches = allMatches.filter(m => !m.finished_at);
 
   // 2) Spieler aus Supabase holen
   const { data: players, error } = await supabase
@@ -183,23 +167,14 @@ async function renderDashboard() {
     return;
   }
 
-  // 3) Offene Spiele HTML vorbereiten
-  let openMatchesHtml = '';
-  openMatchesHtml = `
-    <div class="flex items-center justify-between mb-2">
-      <h3 class="text-lg">Offene Spiele</h3>
-      <button id="gotoScorerBtn" class="btn btn-sm bg-blue-600 text-white flex items-center gap-1">
-        Zu den Matches
-        <span aria-hidden="true">&#8594;</span>
-      </button>
-    </div>
-    <ul class="space-y-1">
-      ${(openMatches && openMatches.length) ? openMatches.map(m => `<li class="border rounded p-2 flex justify-between items-center">
-        <span>${m.p1?.name || '?'} vs ${m.p2?.name || '?'}<br><span class="text-xs text-gray-500">${m.gameday?.date || ''}</span></span>
-        <span class="text-xs">Board ${m.board}</span>
-      </li>`).join('') : '<li class="text-center text-gray-400 py-2">Keine offenen Spiele</li>'}
-    </ul>
-  `;
+  // 3) Spieltage nach Gameday gruppieren
+  const gamedayMap = new Map();
+  allGamedays.forEach(gd => gamedayMap.set(gd.id, { ...gd, matches: [] }));
+  allMatches.forEach(m => {
+    if (gamedayMap.has(m.gameday_id)) {
+      gamedayMap.get(m.gameday_id).matches.push(m);
+    }
+  });
 
   // 4) Formular anzeigen (offene Spiele werden jetzt UNTER dem Button angezeigt)
   app.innerHTML = `
@@ -211,30 +186,109 @@ async function renderDashboard() {
       </div>
 
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <!-- Offene Matches (links) -->
-        <div class="lg:col-span-1">
-          <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl border-4 border-emerald-400 p-6">
-            <h2 class="text-2xl font-bold text-emerald-800 mb-4 flex items-center gap-2">
-              <span>🎲</span> Offene Matches
-            </h2>
-            ${(openMatches && openMatches.length) ? `
-              <div class="space-y-3 mb-4">
-                ${openMatches.map(m => `
-                  <div class="bg-gradient-to-r from-emerald-50 to-emerald-100 border-2 border-emerald-300 rounded-lg p-4 hover:shadow-md transition-shadow">
-                    <div class="flex justify-between items-center">
+        <!-- Spieltag-Verwaltung (links) -->
+        <div class="lg:col-span-1 space-y-4">
+          <!-- Quick-Action: Zu den Matches -->
+          ${openMatches.length ? `
+          <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl border-4 border-emerald-400 p-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <span class="text-lg font-bold text-emerald-800 dark:text-emerald-400">🎲 ${openMatches.length} offene Matches</span>
+              </div>
+              <button id="gotoScorerBtn" class="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white px-4 py-2 rounded-xl font-bold shadow-lg transition-all transform hover:scale-105 text-sm">
+                Starten →
+              </button>
+            </div>
+          </div>
+          ` : ''}
+
+          <!-- Spieltage Liste -->
+          <div class="bg-white dark:bg-gray-800 rounded-xl shadow-xl border-4 border-blue-400 p-6">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-xl font-bold text-blue-800 dark:text-blue-400 flex items-center gap-2">
+                <span>📅</span> Spieltage
+              </h2>
+              ${allGamedays.length > 0 ? `
+              <button id="deleteAllGamedays" class="bg-red-100 dark:bg-red-900/40 hover:bg-red-200 dark:hover:bg-red-800/40 text-red-700 dark:text-red-400 px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1" title="Alle Spieltage löschen">
+                🗑️ Alle löschen
+              </button>
+              ` : ''}
+            </div>
+            <div id="gamedayList" class="space-y-4 max-h-[600px] overflow-y-auto">
+              ${allGamedays.length === 0 ? '<div class="text-center text-gray-400 py-8">Noch keine Spieltage</div>' :
+                allGamedays.map(gd => {
+                  const gdData = gamedayMap.get(gd.id);
+                  const gdMatches = gdData?.matches || [];
+                  const openCount = gdMatches.filter(m => !m.finished_at).length;
+                  const finishedCount = gdMatches.filter(m => m.finished_at).length;
+                  const firstMatch = gdMatches[0];
+                  const settings = firstMatch ? `BO${firstMatch.best_of_sets}S / BO${firstMatch.best_of_legs}L${firstMatch.double_out ? ' • DO' : ''}` : '';
+
+                  return `
+                  <div class="border-2 ${openCount > 0 ? 'border-emerald-300 dark:border-emerald-600' : 'border-gray-200 dark:border-gray-600'} rounded-xl overflow-hidden" data-gameday-id="${gd.id}">
+                    <!-- Spieltag Header -->
+                    <div class="bg-gradient-to-r ${openCount > 0 ? 'from-emerald-50 to-emerald-100 dark:from-emerald-900/30 dark:to-emerald-800/30' : 'from-gray-50 to-gray-100 dark:from-gray-700/50 dark:to-gray-600/50'} p-3 flex items-center justify-between">
                       <div>
-                        <div class="font-semibold text-gray-800 dark:text-gray-200">${m.p1?.name || '?'} <span class="text-emerald-600">vs</span> ${m.p2?.name || '?'}</div>
-                        <div class="text-xs text-gray-600 mt-1">${m.gameday?.date || ''}</div>
+                        <div class="font-bold text-gray-800 dark:text-gray-200 text-sm">${gd.date || '?'}</div>
+                        <div class="text-xs text-gray-500 dark:text-gray-400">${gdMatches.length} Matches • ${settings}</div>
+                        <div class="text-xs mt-0.5">
+                          ${openCount > 0 ? `<span class="text-emerald-600 dark:text-emerald-400 font-semibold">${openCount} offen</span>` : ''}
+                          ${finishedCount > 0 ? `<span class="text-gray-400 ml-1">${finishedCount} fertig</span>` : ''}
+                        </div>
                       </div>
-                      <div class="bg-emerald-600 text-white px-3 py-1 rounded-full text-sm font-bold">Board ${m.board}</div>
+                      <div class="flex gap-1">
+                        <button class="gameday-toggle-btn bg-blue-100 dark:bg-blue-900/40 hover:bg-blue-200 dark:hover:bg-blue-800/40 text-blue-700 dark:text-blue-400 w-8 h-8 rounded-lg text-sm font-bold transition-all flex items-center justify-center" data-gameday-toggle="${gd.id}" title="Details anzeigen">▼</button>
+                        <button class="gameday-edit-btn bg-amber-100 dark:bg-amber-900/40 hover:bg-amber-200 dark:hover:bg-amber-800/40 text-amber-700 dark:text-amber-400 w-8 h-8 rounded-lg text-sm font-bold transition-all flex items-center justify-center" data-gameday-edit="${gd.id}" title="Bearbeiten">✏️</button>
+                        <button class="gameday-delete-btn bg-red-100 dark:bg-red-900/40 hover:bg-red-200 dark:hover:bg-red-800/40 text-red-700 dark:text-red-400 w-8 h-8 rounded-lg text-sm font-bold transition-all flex items-center justify-center" data-gameday-delete="${gd.id}" title="Spieltag löschen">🗑️</button>
+                      </div>
+                    </div>
+
+                    <!-- Spieltag Matches (eingeklappt) -->
+                    <div class="gameday-matches hidden" id="gameday-matches-${gd.id}">
+                      <!-- Edit-Panel (versteckt) -->
+                      <div class="gameday-edit-panel hidden bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-700 p-3" id="gameday-edit-${gd.id}">
+                        <div class="text-xs font-bold text-amber-800 dark:text-amber-400 mb-2">⚙️ Einstellungen ändern</div>
+                        <div class="grid grid-cols-2 gap-2 mb-2">
+                          <div>
+                            <label class="text-xs text-gray-600 dark:text-gray-400">BO Sets</label>
+                            <input type="number" min="1" max="21" value="${firstMatch?.best_of_sets || 1}" class="w-full px-2 py-1 border rounded text-sm edit-bo-sets" />
+                          </div>
+                          <div>
+                            <label class="text-xs text-gray-600 dark:text-gray-400">BO Legs</label>
+                            <input type="number" min="1" max="11" value="${firstMatch?.best_of_legs || 5}" class="w-full px-2 py-1 border rounded text-sm edit-bo-legs" />
+                          </div>
+                        </div>
+                        <label class="flex items-center gap-2 text-xs mb-2 cursor-pointer">
+                          <input type="checkbox" class="edit-double-out" ${firstMatch?.double_out ? 'checked' : ''} />
+                          <span class="text-gray-700 dark:text-gray-300">Double Out</span>
+                        </label>
+                        <div class="flex gap-2">
+                          <button class="gameday-save-edit bg-emerald-500 hover:bg-emerald-600 text-white px-3 py-1 rounded text-xs font-bold transition-all" data-gameday-save="${gd.id}">💾 Speichern</button>
+                          <button class="gameday-cancel-edit bg-gray-400 hover:bg-gray-500 text-white px-3 py-1 rounded text-xs font-bold transition-all" data-gameday-cancel="${gd.id}">Abbrechen</button>
+                        </div>
+                      </div>
+
+                      ${gdMatches.length === 0 ? '<div class="p-3 text-center text-gray-400 text-sm">Keine Matches</div>' :
+                        gdMatches.map(m => `
+                        <div class="flex items-center justify-between p-2 border-b border-gray-100 dark:border-gray-700 last:border-b-0 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors" data-match-row="${m.id}">
+                          <div class="flex-1 min-w-0">
+                            <div class="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">
+                              ${m.p1?.name || '?'} <span class="text-gray-400">vs</span> ${m.p2?.name || '?'}
+                            </div>
+                            <div class="flex gap-2 text-xs text-gray-500 dark:text-gray-400">
+                              <span>Board ${m.board}</span>
+                              ${m.round_no ? `<span>R${m.round_no}</span>` : ''}
+                              <span class="${m.finished_at ? 'text-gray-400' : 'text-emerald-600 dark:text-emerald-400 font-semibold'}">${m.finished_at ? '✓ fertig' : '● offen'}</span>
+                            </div>
+                          </div>
+                          <button class="match-delete-btn bg-red-100 dark:bg-red-900/40 hover:bg-red-200 dark:hover:bg-red-800/40 text-red-600 dark:text-red-400 w-7 h-7 rounded-lg text-xs font-bold transition-all flex items-center justify-center ml-2 flex-shrink-0" data-match-delete="${m.id}" data-gameday-ref="${gd.id}" title="Match löschen">✕</button>
+                        </div>
+                      `).join('')}
                     </div>
                   </div>
-                `).join('')}
-              </div>
-              <button id="gotoScorerBtn" class="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white px-4 py-3 rounded-xl font-bold shadow-lg transition-all transform hover:scale-105">
-                Matches starten →
-              </button>
-            ` : '<div class="text-center text-gray-400 py-8">Keine offenen Matches</div>'}
+                  `;
+                }).join('')}
+            </div>
           </div>
         </div>
 
@@ -247,11 +301,11 @@ async function renderDashboard() {
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
           <div>
             <label class="block mb-2 text-sm font-semibold text-gray-700">Best of Sets</label>
-            <input name="boSets" type="number" min="1" max="21" value="3" class="w-full px-4 py-3 border-2 border-rose-300 rounded-lg focus:border-rose-500 focus:ring-2 focus:ring-rose-200 transition text-lg font-semibold" />
+            <input name="boSets" type="number" min="1" max="21" value="1" class="w-full px-4 py-3 border-2 border-rose-300 rounded-lg focus:border-rose-500 focus:ring-2 focus:ring-rose-200 transition text-lg font-semibold" />
           </div>
           <div>
             <label class="block mb-2 text-sm font-semibold text-gray-700">Best of Legs</label>
-            <input name="boLegs" type="number" min="1" max="11" value="3" class="w-full px-4 py-3 border-2 border-rose-300 rounded-lg focus:border-rose-500 focus:ring-2 focus:ring-rose-200 transition text-lg font-semibold" />
+            <input name="boLegs" type="number" min="1" max="11" value="5" class="w-full px-4 py-3 border-2 border-rose-300 rounded-lg focus:border-rose-500 focus:ring-2 focus:ring-rose-200 transition text-lg font-semibold" />
           </div>
         </div>
 
@@ -312,17 +366,187 @@ async function renderDashboard() {
     </div>
   `;
 
-  // Button-Handler: Wechselt zur Scorer-Seite (nach dem Render!)
-  if (openMatchesHtml) {
-    const btn = document.getElementById('gotoScorerBtn');
-    if (btn) btn.onclick = () => { window.location.hash = '#/scorer'; };
-  }
+  // Button-Handler: Wechselt zur Scorer-Seite
+  const gotoScorerBtn = document.getElementById('gotoScorerBtn');
+  if (gotoScorerBtn) gotoScorerBtn.onclick = () => { window.location.hash = '#/scorer'; };
 
   // Logout im Formular
   document.getElementById('logoutBtn3').onclick = async () => {
     await logout();
     window.location.hash = '#/login';
   };
+
+  // ---- SPIELTAG-VERWALTUNG Event-Handler ----
+
+  // Toggle: Matches ein-/ausklappen
+  document.querySelectorAll('[data-gameday-toggle]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const gdId = btn.dataset.gamedayToggle;
+      const matchesDiv = document.getElementById(`gameday-matches-${gdId}`);
+      if (matchesDiv) {
+        matchesDiv.classList.toggle('hidden');
+        btn.textContent = matchesDiv.classList.contains('hidden') ? '▼' : '▲';
+      }
+    });
+  });
+
+  // Edit: Einstellungen bearbeiten
+  document.querySelectorAll('[data-gameday-edit]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const gdId = btn.dataset.gamedayEdit;
+      const matchesDiv = document.getElementById(`gameday-matches-${gdId}`);
+      const editPanel = document.getElementById(`gameday-edit-${gdId}`);
+      if (matchesDiv) matchesDiv.classList.remove('hidden');
+      if (editPanel) editPanel.classList.toggle('hidden');
+      // Toggle-Button aktualisieren
+      const toggleBtn = document.querySelector(`[data-gameday-toggle="${gdId}"]`);
+      if (toggleBtn) toggleBtn.textContent = '▲';
+    });
+  });
+
+  // Edit: Speichern
+  document.querySelectorAll('[data-gameday-save]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const gdId = btn.dataset.gamedaySave;
+      const editPanel = document.getElementById(`gameday-edit-${gdId}`);
+      if (!editPanel) return;
+
+      const newBoSets = parseInt(editPanel.querySelector('.edit-bo-sets').value, 10);
+      const newBoLegs = parseInt(editPanel.querySelector('.edit-bo-legs').value, 10);
+      const newDoubleOut = editPanel.querySelector('.edit-double-out').checked;
+
+      if (newBoSets % 2 === 0 || newBoLegs % 2 === 0) {
+        alert('Best-of muss ungerade sein (1, 3, 5...)');
+        return;
+      }
+
+      // Alle offenen Matches dieses Spieltags aktualisieren
+      const gdMatches = allMatches.filter(m => m.gameday_id === gdId && !m.finished_at);
+      let errorCount = 0;
+      for (const m of gdMatches) {
+        const { error } = await supabase
+          .from('matches')
+          .update({ best_of_sets: newBoSets, best_of_legs: newBoLegs, double_out: newDoubleOut })
+          .eq('id', m.id);
+        if (error) errorCount++;
+      }
+
+      if (errorCount > 0) {
+        alert(`${errorCount} Matches konnten nicht aktualisiert werden.`);
+      }
+
+      // Dashboard neu laden
+      renderDashboard();
+    });
+  });
+
+  // Edit: Abbrechen
+  document.querySelectorAll('[data-gameday-cancel]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const gdId = btn.dataset.gamedayCancel;
+      const editPanel = document.getElementById(`gameday-edit-${gdId}`);
+      if (editPanel) editPanel.classList.add('hidden');
+    });
+  });
+
+  // Einzelnes Match löschen
+  document.querySelectorAll('[data-match-delete]').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const matchId = btn.dataset.matchDelete;
+      const gdId = btn.dataset.gamedayRef;
+
+      // Match-Name für Bestätigung
+      const match = allMatches.find(m => m.id === matchId);
+      const matchName = match ? `${match.p1?.name || '?'} vs ${match.p2?.name || '?'}` : 'dieses Match';
+
+      if (!confirm(`"${matchName}" wirklich löschen?\n\nAlle zugehörigen Legs und Würfe werden ebenfalls gelöscht.`)) return;
+
+      // Zugehörige Throws und Legs löschen
+      await supabase.from('throws').delete().eq('match_id', matchId);
+      await supabase.from('legs').delete().eq('match_id', matchId);
+      const { error } = await supabase.from('matches').delete().eq('id', matchId);
+
+      if (error) {
+        alert('Fehler beim Löschen: ' + error.message);
+        return;
+      }
+
+      // Match-Zeile aus UI entfernen
+      const row = document.querySelector(`[data-match-row="${matchId}"]`);
+      if (row) {
+        row.style.transition = 'opacity 0.3s, transform 0.3s';
+        row.style.opacity = '0';
+        row.style.transform = 'translateX(50px)';
+        setTimeout(() => {
+          row.remove();
+          // Prüfen ob der Spieltag noch Matches hat
+          const remaining = document.querySelectorAll(`#gameday-matches-${gdId} [data-match-row]`);
+          if (remaining.length === 0) {
+            // Spieltag auch löschen wenn keine Matches mehr da sind
+            supabase.from('gamedays').delete().eq('id', gdId).then(() => {
+              renderDashboard();
+            });
+          }
+        }, 300);
+      }
+    });
+  });
+
+  // Ganzen Spieltag löschen
+  document.querySelectorAll('[data-gameday-delete]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const gdId = btn.dataset.gamedayDelete;
+      const gdData = gamedayMap.get(gdId);
+      const matchCount = gdData?.matches?.length || 0;
+
+      if (!confirm(`Spieltag "${gdData?.date || '?'}" mit ${matchCount} Matches wirklich komplett löschen?\n\nAlle Matches, Legs und Würfe werden unwiderruflich gelöscht!`)) return;
+
+      // Alle zugehörigen Daten löschen
+      const matchIds = (gdData?.matches || []).map(m => m.id);
+      for (const mid of matchIds) {
+        await supabase.from('throws').delete().eq('match_id', mid);
+        await supabase.from('legs').delete().eq('match_id', mid);
+      }
+      // Matches löschen
+      for (const mid of matchIds) {
+        await supabase.from('matches').delete().eq('id', mid);
+      }
+      // Spieltag löschen
+      await supabase.from('gamedays').delete().eq('id', gdId);
+
+      // Dashboard neu laden
+      renderDashboard();
+    });
+  });
+
+  // Alle Spieltage löschen
+  const deleteAllBtn = document.getElementById('deleteAllGamedays');
+  if (deleteAllBtn) {
+    deleteAllBtn.addEventListener('click', async () => {
+      const totalMatches = allMatches.length;
+      const totalGamedays = allGamedays.length;
+
+      if (!confirm(`Wirklich ALLE ${totalGamedays} Spieltage mit insgesamt ${totalMatches} Matches löschen?\n\nAlle Daten (Matches, Legs, Würfe) werden unwiderruflich gelöscht!`)) return;
+
+      deleteAllBtn.textContent = '⏳ Lösche...';
+      deleteAllBtn.disabled = true;
+
+      // Alle Throws, Legs, Matches, Gamedays löschen
+      for (const m of allMatches) {
+        await supabase.from('throws').delete().eq('match_id', m.id);
+        await supabase.from('legs').delete().eq('match_id', m.id);
+      }
+      for (const m of allMatches) {
+        await supabase.from('matches').delete().eq('id', m.id);
+      }
+      for (const gd of allGamedays) {
+        await supabase.from('gamedays').delete().eq('id', gd.id);
+      }
+
+      renderDashboard();
+    });
+  }
 
   // 4) Player-Divs anlegen (vertikal übereinander, klickbar, blau beim Klick)
   const selectedPlayers = new Set();
@@ -420,8 +644,8 @@ async function renderDashboard() {
         // Formular-Werte setzen
         const form = document.getElementById('cfgForm');
         if (form) {
-          form.elements.boSets.value = t.boSets || 3;
-          form.elements.boLegs.value = t.boLegs || 3;
+          form.elements.boSets.value = t.boSets || 1;
+          form.elements.boLegs.value = t.boLegs || 5;
           form.elements.doubleOut.checked = t.doubleOut !== false;
           form.elements.numBoards.value = t.boards || 1;
         }
@@ -470,8 +694,8 @@ async function renderDashboard() {
     const template = {
       name,
       playerIds: [...selectedPlayers],
-      boSets: parseInt(form.elements.boSets.value) || 3,
-      boLegs: parseInt(form.elements.boLegs.value) || 3,
+      boSets: parseInt(form.elements.boSets.value) || 1,
+      boLegs: parseInt(form.elements.boLegs.value) || 5,
       doubleOut: form.elements.doubleOut.checked,
       boards: parseInt(form.elements.numBoards.value) || 1,
       createdAt: new Date().toISOString()
@@ -726,7 +950,14 @@ async function renderScorer() {
   // Erste nicht-leere Runde hervorheben (= nächste zu spielende Runde)
   const firstRound = sortedRounds[0]?.[0];
 
-  scorerContent.innerHTML = sortedRounds.map(([roundNo, roundMatches]) => {
+  // "Alle Matches löschen"-Button
+  scorerContent.innerHTML = `
+    <div class="flex justify-end mb-3">
+      <button id="deleteAllBoardMatches" class="bg-red-100 dark:bg-red-900/40 hover:bg-red-200 dark:hover:bg-red-800/40 text-red-700 dark:text-red-400 px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1">
+        🗑️ Alle Matches löschen (Board ${currentBoard})
+      </button>
+    </div>
+  ` + sortedRounds.map(([roundNo, roundMatches]) => {
     const isCurrentRound = roundNo === firstRound;
     return `
       <div class="mb-4">
@@ -740,50 +971,91 @@ async function renderScorer() {
         </div>
         <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
           ${roundMatches.map(m => `
-            <button type="button" class="group relative bg-gradient-to-br ${isCurrentRound ? 'from-emerald-50 to-emerald-100 dark:from-emerald-900/20 dark:to-emerald-800/20 border-emerald-400 dark:border-emerald-500' : 'from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-blue-300 dark:border-blue-500'} border-2 rounded-xl p-4 hover:shadow-2xl hover:scale-[1.02] transition-all duration-200 text-left" data-mid="${m.id}">
-              <div class="flex items-center justify-between">
-                <div class="flex-1">
-                  <div class="text-lg font-bold text-gray-900 dark:text-gray-100">
-                    ${m.p1?.name || '?'}
-                    <span class="${isCurrentRound ? 'text-emerald-600' : 'text-blue-600'} mx-2">vs</span>
-                    ${m.p2?.name || '?'}
+            <div class="relative group">
+              <button type="button" class="w-full bg-gradient-to-br ${isCurrentRound ? 'from-emerald-50 to-emerald-100 dark:from-emerald-900/20 dark:to-emerald-800/20 border-emerald-400 dark:border-emerald-500' : 'from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-blue-300 dark:border-blue-500'} border-2 rounded-xl p-4 hover:shadow-2xl hover:scale-[1.02] transition-all duration-200 text-left" data-mid="${m.id}">
+                <div class="flex items-center justify-between">
+                  <div class="flex-1">
+                    <div class="text-lg font-bold text-gray-900 dark:text-gray-100">
+                      ${m.p1?.name || '?'}
+                      <span class="${isCurrentRound ? 'text-emerald-600' : 'text-blue-600'} mx-2">vs</span>
+                      ${m.p2?.name || '?'}
+                    </div>
+                    <div class="flex gap-3 text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      <span>${m.gameday?.date || ''}</span>
+                      <span>BO${m.best_of_legs} Legs</span>
+                    </div>
                   </div>
-                  <div class="flex gap-3 text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    <span>${m.gameday?.date || ''}</span>
-                    <span>BO${m.best_of_legs} Legs</span>
-                  </div>
+                  <svg class="w-6 h-6 ${isCurrentRound ? 'text-emerald-500' : 'text-blue-400'} group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
+                  </svg>
                 </div>
-                <svg class="w-6 h-6 ${isCurrentRound ? 'text-emerald-500' : 'text-blue-400'} group-hover:translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"></path>
-                </svg>
-              </div>
-            </button>
+              </button>
+              <button type="button" class="scorer-match-delete absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white w-7 h-7 rounded-full text-xs font-bold shadow-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center z-10" data-delete-mid="${m.id}" title="Match löschen">✕</button>
+            </div>
           `).join('')}
         </div>
       </div>
     `;
   }).join('');
-  // Event-Delegation für Touch/Click: Nur noch click-Event (iPad/iOS Fix)
+  // --- Einzelnes Match löschen (✕ Button) ---
+  scorerContent.querySelectorAll('.scorer-match-delete').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const matchId = btn.dataset.deleteMid;
+      const match = matches.find(x => String(x.id) === String(matchId));
+      const matchName = match ? `${match.p1?.name || '?'} vs ${match.p2?.name || '?'}` : 'dieses Match';
+
+      if (!confirm(`"${matchName}" wirklich löschen?`)) return;
+
+      await supabase.from('throws').delete().eq('match_id', matchId);
+      await supabase.from('legs').delete().eq('match_id', matchId);
+      await supabase.from('matches').delete().eq('id', matchId);
+
+      // Scorer neu laden
+      renderScorer();
+    });
+  });
+
+  // --- Alle Matches dieses Boards löschen ---
+  const deleteAllBoardBtn = document.getElementById('deleteAllBoardMatches');
+  if (deleteAllBoardBtn) {
+    deleteAllBoardBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (!confirm(`Alle ${matches.length} offenen Matches auf Board ${currentBoard} löschen?`)) return;
+
+      deleteAllBoardBtn.textContent = '⏳ Lösche...';
+      deleteAllBoardBtn.disabled = true;
+
+      for (const m of matches) {
+        await supabase.from('throws').delete().eq('match_id', m.id);
+        await supabase.from('legs').delete().eq('match_id', m.id);
+        await supabase.from('matches').delete().eq('id', m.id);
+      }
+
+      renderScorer();
+    });
+  }
+
+  // --- Match starten (Event-Delegation, ignoriert Lösch-Buttons) ---
   let matchSelectLock = false;
   function handleMatchSelect(e) {
-    console.log('[Match-Select] Click detected', e.target);
+    // Lösch-Buttons ignorieren
+    if (e.target.closest('.scorer-match-delete') || e.target.closest('#deleteAllBoardMatches')) return;
+
     e.preventDefault();
     e.stopPropagation();
-    if (matchSelectLock) {
-      console.log('[Match-Select] Locked, ignoring');
-      return;
-    }
+    if (matchSelectLock) return;
     matchSelectLock = true;
-    setTimeout(() => matchSelectLock = false, 400); // Doppelauslösung verhindern
+    setTimeout(() => matchSelectLock = false, 400);
     const btn = e.target.closest('button[data-mid]');
-    console.log('[Match-Select] Button found:', btn, 'data-mid:', btn?.dataset?.mid);
     if (!btn) return;
     const m = matches.find(x => String(x.id).trim() === String(btn.dataset.mid).trim());
-    console.log('[Match-Select] Match found:', m);
     if (m) startMatch(m);
   }
   scorerContent.addEventListener('click', handleMatchSelect);
-  console.log('[Match-Select] Event handler registered on scorerContent');
 }
 
 async function startMatch(m) {
