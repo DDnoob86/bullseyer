@@ -10,6 +10,7 @@ import { createLeg } from './services/match.js';
 import * as store from './state/store.js';
 import { START_SCORE, PLAYER, STORAGE_KEYS } from './utils/constants.js';
 import { ensurePlayerNames } from './utils/players.js';
+import { renderPlayers } from './ui/players.js';
 
 const DEV = true;
 
@@ -45,6 +46,7 @@ window.onhashchange = () => {
   else if (page.startsWith('#/dashboard')) renderDashboard();
   else if (page.startsWith('#/scorer'))   renderScorer();
   else if (page.startsWith('#/livescorer')) renderScorer(); // Livescorer zeigt das Live-Scoring
+  else if (page.startsWith('#/players'))   renderPlayers();
   else if (page.startsWith('#/stats'))    renderStats();
   else renderDashboard(); // ⚠️ MOCK: Default zu Dashboard
 };
