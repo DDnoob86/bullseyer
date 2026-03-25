@@ -119,6 +119,11 @@ class MockQueryBuilder {
     return this;
   }
 
+  delete() {
+    this.query.delete = true;
+    return this;
+  }
+
   eq(field, value) {
     this.query.eq = this.query.eq || [];
     this.query.eq.push({ field, value });
@@ -187,6 +192,16 @@ class MockQueryBuilder {
       console.log(`[Mock-DB] Total ${this.table}:`, mockDB[this.table].length);
 
       return { data: newRecords, error: null };
+    }
+
+    // DELETE
+    if (this.query.delete) {
+      const before = mockDB[this.table].length;
+      const deleted = mockDB[this.table].filter(record => this.matchesFilters(record));
+      mockDB[this.table] = mockDB[this.table].filter(record => !this.matchesFilters(record));
+      saveDB();
+      console.log(`[Mock-DB] DELETE ${this.table}: ${deleted.length} records removed (${before} → ${mockDB[this.table].length})`);
+      return { data: deleted, error: null };
     }
 
     // UPDATE
