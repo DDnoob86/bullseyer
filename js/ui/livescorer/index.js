@@ -179,19 +179,16 @@ function buildLivescorerHTML(match, names, bestSet, bestLeg, gameStarter) {
         </div>
       </div>
 
-      <!-- Checkout Dialog (hidden) -->
+      <!-- Checkout Dialog (hidden, dynamisch befüllt von dialogs.js) -->
       <div id="checkoutDialog" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden items-center justify-center">
-        <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border-4 border-amber-400 p-8 mx-4 w-full max-w-sm text-center">
-          <div class="text-5xl mb-3">🎯</div>
-          <h3 class="text-2xl font-bold text-amber-700 dark:text-amber-400 mb-2">Checkout!</h3>
-          <p class="text-lg text-gray-600 dark:text-gray-300 mb-6" id="checkoutText">Wie viele Darts zum Finish?</p>
-          <div class="flex gap-4 justify-center">
-            <button data-darts="1" class="checkout-dart-btn flex-1 bg-gradient-to-br from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white py-4 rounded-xl font-bold text-2xl shadow-lg transition-all transform hover:scale-105">1</button>
-            <button data-darts="2" class="checkout-dart-btn flex-1 bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white py-4 rounded-xl font-bold text-2xl shadow-lg transition-all transform hover:scale-105">2</button>
-            <button data-darts="3" class="checkout-dart-btn flex-1 bg-gradient-to-br from-violet-500 to-violet-600 hover:from-violet-600 hover:to-violet-700 text-white py-4 rounded-xl font-bold text-2xl shadow-lg transition-all transform hover:scale-105">3</button>
-          </div>
-          <p class="text-xs text-gray-400 mt-4">Anzahl Darts für die Statistik</p>
+        <div class="dialog-inner bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border-4 border-amber-400 p-8 mx-4 w-full max-w-sm text-center">
+          <!-- Wird dynamisch befüllt -->
         </div>
+      </div>
+
+      <!-- Leg/Set Won Overlay (hidden) -->
+      <div id="legWonOverlay" class="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 hidden items-center justify-center">
+        <!-- Wird dynamisch befüllt -->
       </div>
 
       <!-- Bust Toast (hidden) -->
