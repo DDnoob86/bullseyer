@@ -1,21 +1,44 @@
-
 <svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 240 240">
   <defs>
-    <style>
-      .text { font-family: 'Segoe UI', Verdana, sans-serif; font-weight: 700; font-size: 28px; fill: #222; }
-    </style>
+    <radialGradient id="boardGradient" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#2d3748;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1a202c;stop-opacity:1" />
+    </radialGradient>
+    <linearGradient id="dartGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" style="stop-color:#cbd5e0;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#e2e8f0;stop-opacity:1" />
+    </linearGradient>
   </defs>
-  <!-- outer circle -->
-  <circle cx="120" cy="120" r="100" fill="#333"/>
-  <!-- bull ring -->
-  <circle cx="120" cy="120" r="40" fill="#ffffff"/>
-  <!-- bullseye -->
-  <circle cx="120" cy="120" r="18" fill="#e52421"/>
-  <!-- dart shaft -->
-  <rect x="60" y="110" width="90" height="6" fill="#c9c9c9" transform="rotate(-10 60 110)"/>
-  <!-- flights -->
-  <polygon points="58,106 40,94 46,110" fill="#0052cc"/>
-  <polygon points="58,118 40,130 46,114" fill="#0052cc"/>
-  <!-- logo text -->
-  <text class="text" x="120" y="215" text-anchor="middle">DartScorer</text>
+
+  <!-- Outer ring with gradient -->
+  <circle cx="120" cy="120" r="100" fill="url(#boardGradient)" stroke="#48bb78" stroke-width="4"/>
+
+  <!-- Scoring segments (decorative) -->
+  <circle cx="120" cy="120" r="90" fill="none" stroke="#4a5568" stroke-width="1" opacity="0.3"/>
+  <circle cx="120" cy="120" r="70" fill="none" stroke="#4a5568" stroke-width="1" opacity="0.3"/>
+  <circle cx="120" cy="120" r="50" fill="none" stroke="#4a5568" stroke-width="1" opacity="0.3"/>
+
+  <!-- Bull ring (25) -->
+  <circle cx="120" cy="120" r="40" fill="#10b981" stroke="#059669" stroke-width="2"/>
+
+  <!-- Bullseye (50) -->
+  <circle cx="120" cy="120" r="18" fill="#dc2626" stroke="#991b1b" stroke-width="2">
+    <animate attributeName="r" values="18;20;18" dur="2s" repeatCount="indefinite"/>
+  </circle>
+
+  <!-- Dart shaft with gradient -->
+  <rect x="55" y="109" width="95" height="7" fill="url(#dartGradient)" stroke="#94a3b8" stroke-width="1" transform="rotate(-12 55 109)" rx="1"/>
+
+  <!-- Dart tip -->
+  <polygon points="150,112 158,112.5 150,113" fill="#475569" transform="rotate(-12 150 112.5)"/>
+
+  <!-- Flights with gradient -->
+  <defs>
+    <linearGradient id="flightGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#3b82f6;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#2563eb;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <polygon points="56,105 38,92 44,110" fill="url(#flightGradient)" stroke="#1e40af" stroke-width="0.5" transform="rotate(-12 56 105)"/>
+  <polygon points="56,118 38,131 44,113" fill="url(#flightGradient)" stroke="#1e40af" stroke-width="0.5" transform="rotate(-12 56 118)"/>
 </svg>

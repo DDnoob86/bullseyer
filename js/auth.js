@@ -1,4 +1,5 @@
-import { supabase } from './supabase.js';
+// ⚠️ MOCK-MODUS FÜR TESTS - Ändere zu './supabase.js' für echtes Backend
+import { supabase } from './supabase-mock.js';
 
 /**
  * Registriert einen neuen Spieler-Account.

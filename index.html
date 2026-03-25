@@ -1,31 +1,283 @@
 <!DOCTYPE html>
 <html lang="de">
   <head>
-    <!-- Tailwind Utility-Klassen aus dem CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Bullseyer</title>
+    <title>Bullseyer - Darts Live Scoring</title>
 
-    <!-- Tailwind → wird offline gecacht (service‑worker) -->
-    <link rel="stylesheet" href="https://cdn.tailwindcss.com" />
+    <!-- Tailwind CSS with Dark Mode -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class', // Enable class-based dark mode
+        theme: {
+          extend: {
+            animation: {
+              'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            }
+          }
+        }
+      }
+    </script>
+
+    <!-- Dark Mode Custom Styles -->
+    <style>
+      /* Beautiful Dark Mode with better colors */
+      .dark {
+        background: linear-gradient(to bottom, #0f172a, #1e293b);
+      }
+
+      /* Inputs & Forms */
+      .dark input,
+      .dark select,
+      .dark textarea {
+        background: linear-gradient(145deg, #1e293b, #334155);
+        color: #f1f5f9;
+        border: 1px solid #475569;
+        box-shadow: inset 2px 2px 4px rgba(0,0,0,0.3);
+      }
+
+      .dark input:focus,
+      .dark select:focus,
+      .dark textarea:focus {
+        border-color: #10b981;
+        box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2), inset 2px 2px 4px rgba(0,0,0,0.3);
+        outline: none;
+      }
+
+      /* Beautiful cards with gradient borders */
+      .dark .bg-white:not(.text-white) {
+        background: linear-gradient(145deg, #1e293b, #334155) !important;
+        border-color: #475569 !important;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4),
+                    inset 1px 1px 2px rgba(255, 255, 255, 0.05) !important;
+      }
+
+      /* Emerald cards in dark mode */
+      .dark .border-emerald-400 {
+        border-color: #10b981 !important;
+        box-shadow: 0 8px 32px rgba(16, 185, 129, 0.2),
+                    0 0 40px rgba(16, 185, 129, 0.1) !important;
+      }
+
+      /* Rose cards in dark mode */
+      .dark .border-rose-400 {
+        border-color: #f43f5e !important;
+        box-shadow: 0 8px 32px rgba(244, 63, 94, 0.2),
+                    0 0 40px rgba(244, 63, 94, 0.1) !important;
+      }
+
+      /* Blue cards in dark mode */
+      .dark .border-blue-400 {
+        border-color: #3b82f6 !important;
+        box-shadow: 0 8px 32px rgba(59, 130, 246, 0.2),
+                    0 0 40px rgba(59, 130, 246, 0.1) !important;
+      }
+
+      /* Violet cards in dark mode */
+      .dark .border-violet-400 {
+        border-color: #8b5cf6 !important;
+        box-shadow: 0 8px 32px rgba(139, 92, 246, 0.2),
+                    0 0 40px rgba(139, 92, 246, 0.1) !important;
+      }
+
+      /* Better gradients in dark mode */
+      .dark .bg-gradient-to-r {
+        filter: brightness(1.1) saturate(1.2);
+      }
+
+      .dark .from-emerald-50 {
+        background: linear-gradient(to right, rgba(16, 185, 129, 0.15), rgba(16, 185, 129, 0.08)) !important;
+        border-color: rgba(16, 185, 129, 0.3) !important;
+      }
+
+      .dark .from-rose-50 {
+        background: linear-gradient(to right, rgba(244, 63, 94, 0.15), rgba(244, 63, 94, 0.08)) !important;
+        border-color: rgba(244, 63, 94, 0.3) !important;
+      }
+
+      .dark .from-blue-50 {
+        background: linear-gradient(to right, rgba(59, 130, 246, 0.15), rgba(59, 130, 246, 0.08)) !important;
+        border-color: rgba(59, 130, 246, 0.3) !important;
+      }
+
+      /* Text improvements */
+      .dark .text-emerald-800,
+      .dark .text-emerald-700 {
+        color: #34d399 !important;
+      }
+
+      .dark .text-rose-800,
+      .dark .text-rose-700 {
+        color: #fb7185 !important;
+      }
+
+      .dark .text-blue-800,
+      .dark .text-blue-700 {
+        color: #60a5fa !important;
+      }
+
+      .dark .text-gray-600 {
+        color: #cbd5e1 !important;
+      }
+
+      .dark .text-gray-400 {
+        color: #94a3b8 !important;
+      }
+
+      /* Player boxes with glow */
+      .dark .player1-box,
+      .dark .player2-box {
+        background: linear-gradient(145deg, #1e293b, #334155) !important;
+      }
+
+      .dark .border-emerald-600 {
+        border-color: #10b981 !important;
+        box-shadow: 0 0 30px rgba(16, 185, 129, 0.4) !important;
+      }
+
+      .dark .border-rose-600 {
+        border-color: #f43f5e !important;
+        box-shadow: 0 0 30px rgba(244, 63, 94, 0.4) !important;
+      }
+
+      /* Smooth transitions */
+      * {
+        transition-property: background-color, border-color, color, fill, stroke, box-shadow;
+        transition-duration: 300ms;
+        transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      /* Scrollbar in dark mode */
+      .dark::-webkit-scrollbar {
+        width: 12px;
+      }
+
+      .dark::-webkit-scrollbar-track {
+        background: #1e293b;
+      }
+
+      .dark::-webkit-scrollbar-thumb {
+        background: #475569;
+        border-radius: 6px;
+      }
+
+      .dark::-webkit-scrollbar-thumb:hover {
+        background: #64748b;
+      }
+    </style>
 
     <!-- PWA Meta‑Daten -->
     <link rel="manifest" href="./manifest.webmanifest" />
-    <meta name="theme-color" content="#ADD8E6" />
+    <meta name="theme-color" content="#10b981" />
   </head>
-  <body class="bg-gray-50 text-gray-900 min-h-screen flex flex-col">
-    <!-- Header mit Logo / Schriftzug - wird dynamisch gesteuert -->
-    <header id="mainHeader" class="p-4 text-center text-2xl font-bold select-none">
-      <img src="./assets/logo.svg" alt="Bullseyer" class="inline h-40 mr-2" />Bullseyer
+  <body class="bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 min-h-screen flex flex-col transition-colors duration-300">
+    <!-- Modern Header with Navigation -->
+    <header id="mainHeader" class="sticky top-0 z-50 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 dark:from-emerald-700 dark:via-teal-700 dark:to-cyan-700 shadow-lg transition-all duration-300">
+      <div class="container mx-auto px-4">
+        <!-- Top Bar: Logo + Dark Mode Toggle -->
+        <div class="flex items-center justify-between py-3">
+          <!-- Logo & Title -->
+          <div class="flex items-center gap-3 cursor-pointer" onclick="window.location.hash = '#/dashboard'">
+            <img src="./assets/logo.svg" alt="Bullseyer" class="h-12 w-12 drop-shadow-lg hover:scale-110 transition-transform duration-300" />
+            <div>
+              <h1 class="text-2xl font-bold text-white tracking-tight">Bullseyer</h1>
+              <p class="text-xs text-emerald-100">Darts Live Scoring</p>
+            </div>
+          </div>
+
+          <!-- Dark Mode Toggle -->
+          <button id="darkModeToggle" class="p-2 rounded-lg bg-white/20 hover:bg-white/30 text-white transition-all duration-300 backdrop-blur-sm">
+            <svg id="darkModeIcon" class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <!-- Sun Icon (shown in dark mode) -->
+              <path class="dark-mode-sun hidden dark:block" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path>
+              <!-- Moon Icon (shown in light mode) -->
+              <path class="dark-mode-moon block dark:hidden" stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"></path>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Navigation Bar -->
+        <nav id="mainNav" class="border-t border-white/20 -mx-4 px-4">
+          <div class="flex gap-1 py-1">
+            <a href="#/dashboard" id="navDashboard" class="nav-link flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white/80 hover:text-white hover:bg-white/20 transition-all duration-200">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path>
+              </svg>
+              <span class="hidden sm:inline">Dashboard</span>
+            </a>
+            <a href="#/scorer" id="navScorer" class="nav-link flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white/80 hover:text-white hover:bg-white/20 transition-all duration-200">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+              </svg>
+              <span class="hidden sm:inline">Scorer</span>
+            </a>
+            <a href="#/players" id="navPlayers" class="nav-link flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white/80 hover:text-white hover:bg-white/20 transition-all duration-200">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+              </svg>
+              <span class="hidden sm:inline">Spieler</span>
+            </a>
+            <a href="#/stats" id="navStats" class="nav-link flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white/80 hover:text-white hover:bg-white/20 transition-all duration-200">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+              </svg>
+              <span class="hidden sm:inline">Stats</span>
+            </a>
+          </div>
+        </nav>
+      </div>
     </header>
 
     <!-- SPA Root -->
-    <main id="app" class="flex-1 p-4"></main>
+    <main id="app" class="flex-1 p-4 container mx-auto"></main>
+
+    <!-- Dark Mode & Navigation Script -->
+    <script>
+      // Dark Mode Toggle
+      (function() {
+        const darkModeToggle = document.getElementById('darkModeToggle');
+        const html = document.documentElement;
+
+        // Load saved preference or default to light mode
+        const savedTheme = localStorage.getItem('bullseyer_theme') || 'light';
+        if (savedTheme === 'dark') {
+          html.classList.add('dark');
+        }
+
+        // Toggle dark mode
+        darkModeToggle?.addEventListener('click', () => {
+          html.classList.toggle('dark');
+          const newTheme = html.classList.contains('dark') ? 'dark' : 'light';
+          localStorage.setItem('bullseyer_theme', newTheme);
+        });
+
+        // Highlight active navigation link
+        function updateActiveNav() {
+          const hash = window.location.hash || '#/dashboard';
+          const navLinks = document.querySelectorAll('.nav-link');
+
+          navLinks.forEach(link => {
+            const href = link.getAttribute('href');
+            if (hash.startsWith(href)) {
+              link.classList.add('bg-white/30', 'text-white');
+              link.classList.remove('text-white/80');
+            } else {
+              link.classList.remove('bg-white/30', 'text-white');
+              link.classList.add('text-white/80');
+            }
+          });
+        }
+
+        // Update on hash change
+        window.addEventListener('hashchange', updateActiveNav);
+        window.addEventListener('load', updateActiveNav);
+        // Initial update
+        setTimeout(updateActiveNav, 100);
+      })();
+    </script>
 
     <!-- Haupt‑Bundle -->
-    <!-- Stelle sicher, dass der Pfad zu main.js korrekt ist -->
     <script type="module" src="js/main.js"></script>
   </body>
 </html>
