@@ -23,9 +23,7 @@ Compiles Tailwind CSS from `css/tailwind.css` to `css/output.css` with minificat
 ### Local Development
 Since this is a static PWA, serve the files using any local server:
 ```bash
-python -m http.server 8000
-# or
-npx serve .
+npm start
 ```
 
 ## Architecture

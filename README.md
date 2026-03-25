@@ -9,11 +9,7 @@ Eine Progressive Web App (PWA) für Echtzeit-Darts-Scoring mit professioneller M
 Die App ist eine statische PWA und benötigt nur einen einfachen HTTP-Server:
 
 ```bash
-# Option 1: Python (meist vorinstalliert)
-python -m http.server 8000
-
-# Option 2: Node.js serve
-npx serve .
+npm start
 ```
 
 ### 2. Website aufrufen
