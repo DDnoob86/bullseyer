@@ -14,26 +14,20 @@ python -m http.server 8000
 
 # Option 2: Node.js serve
 npx serve .
-
-# Option 3: PHP (falls installiert)
-php -S localhost:8000
 ```
 
 ### 2. Website aufrufen
-
-Öffne deinen Browser und navigiere zu:
 
 ```
 http://localhost:8000
 ```
 
-### 3. Einloggen & Losspielen
+### 3. Losspielen
 
 Die App läuft im **Mock-Modus** (ohne echtes Backend):
-
-- **Login:** Gib einen beliebigen Namen ein (z.B. "Alice")
-- **Demo-Spieler:** Alice, Bob, Charlie, Diana sind vorinstalliert
-- Email & Passwort werden ignoriert (alles wird nur im Browser gespeichert)
+- Wird automatisch eingeloggt
+- Spieler über „Spieler"-Seite anlegen
+- Daten werden im Browser (localStorage) gespeichert
 
 📖 **Mehr Infos zum Mock-Modus:** Siehe [MOCK-MODE.md](./MOCK-MODE.md)
 
@@ -41,24 +35,34 @@ Die App läuft im **Mock-Modus** (ohne echtes Backend):
 
 ## 📋 Features
 
-### ✅ Match-Verwaltung
-- **Spieltag-Organisation:** Erstelle Game Days mit automatischen Round-Robin-Paarungen
-- **Multi-Board-Support:** Unterstützt 1-8 Boards parallel
-- **Flexible Konfiguration:** Best-of-Sets und Best-of-Legs frei wählbar
-- **Double-Out-Regel:** Vollständige Double-Out-Validierung mit S/D/T-Buttons
+### Match-Verwaltung
+- **Spieltag-Organisation:** Game Days mit automatischen Round-Robin-Paarungen (Circle-Method-Algorithmus)
+- **Multi-Board-Support:** 1–8 Boards parallel, Matches werden gleichmäßig verteilt
+- **Flexible Konfiguration:** Best-of-Sets, Best-of-Legs, Double-Out
+- **Spieltag-Vorlagen:** Spieler + Einstellungen als wiederverwendbare Vorlagen speichern
+- **Spieltag-Verwaltung:** Einstellungen nachträglich ändern, einzelne Matches oder ganze Spieltage löschen
 
-### ✅ Live-Scoring
-- **3-Dart-Eingabe:** Digitaler Ziffernblock mit Single/Double/Triple-Buttons
-- **Quick-Score-Buttons:** Schnelleingabe für häufige Scores (0, 26, 41, 60, 81, 100, 140, 180)
-- **Echtzeit-Statistiken:** Leg- und Match-Averages, 180er, 140+, High Score
-- **Checkout-Vorschläge:** Automatische Finish-Empfehlungen ab 170
-- **Undo-Funktion:** Korrigiere falsche Eingaben
-- **BUST-Erkennung:** Automatische Validierung (zu hoch, auf 1, unter 0, kein Double)
+### Live-Scoring
+- **Zwei Eingabe-Modi:**
+  - **Score-Modus:** Geworfene Punkte direkt eingeben (Numpad oder Quick-Score-Buttons)
+  - **Rest-Modus:** Verbleibende Punkte eingeben, Score wird automatisch berechnet
+- **Quick-Score-Buttons:** 180, 140, 100, 85, 60, 45, 41, 26
+- **Checkout-Vorschläge:** Automatische Finish-Empfehlungen ab 170 (Double-Out)
+- **Checkout-Dialog:** Bei Finish → Darts zum Checkout + Bullfinish-Option wählen
+- **Undo-Funktion:** Letzten Wurf rückgängig machen
+- **BUST-Erkennung:** Zu hoch, auf 1, kein gültiger Checkout
+- **Startspieler-Auswahl:** Vor dem ersten Leg
+- **Automatische Leg/Set-Progression:** Overlays bei Leg-/Set-Gewinn
 
-### ✅ Statistiken
-- **Live-Stats:** 180er, 140+, High Score, Dart-Count
-- **Match-Ende-Screen:** Detaillierte Match-Zusammenfassung mit Winner-Animation
-- **Historische Daten:** Alle Würfe und Legs werden gespeichert
+### Statistiken
+- **Live-Stats im Match:** Leg-Ø, Match-Ø, 180er, 140+, Highscore, Darts pro Leg/Match
+- **Match-Ende-Screen:** Detaillierte Zusammenfassung mit Leg-Übersicht, High Finishes, Bullfinishes
+- **Statistik-Seite:** Rangliste mit Punktesystem, Spieltag-Filter, Spieler-Detailansicht
+- **CSV-Export:** Rangliste + Match-Historie als CSV (deutsche Excel-Kompatibilität mit Semikolon)
+
+### Spielerverwaltung
+- Spieler anlegen, bearbeiten, löschen
+- Werden in Match-Paarungen und Statistiken verwendet
 
 ---
 
@@ -66,36 +70,45 @@ Die App läuft im **Mock-Modus** (ohne echtes Backend):
 
 ```
 bullseyer/
-├── index.html              # Entry Point
+├── index.html                  # Entry Point + Header/Navigation
 ├── css/
-│   ├── tailwind.css       # Tailwind Source
-│   └── output.css         # Compiled CSS (Build-Artefakt)
+│   ├── tailwind.css            # Tailwind Source
+│   └── output.css              # Compiled CSS
 ├── js/
-│   ├── main.js            # Router & Orchestrator
-│   ├── auth.js            # Authentifizierung
-│   ├── supabase.js        # Echtes Backend (nicht aktiv)
-│   ├── supabase-mock.js   # Mock-Backend (localStorage) ✅ AKTIV
-│   ├── scorer.js          # Leg-Klasse & Scoring-Logik
-│   ├── pairing.js         # Round-Robin-Pairing
-│   ├── export.js          # Excel-Export
+│   ├── main.js                 # App-Orchestrator (~50 Zeilen)
+│   ├── router.js               # Hash-basierter SPA-Router mit Cleanup
+│   ├── auth.js                 # Authentifizierung
+│   ├── supabase.js             # Echtes Supabase-Backend
+│   ├── supabase-mock.js        # Mock-Backend (localStorage) ✅ AKTIV
+│   ├── scorer.js               # Leg-Klasse (501 down)
+│   ├── pairing.js              # Round-Robin mit echten Runden
+│   ├── export.js               # Excel-Export (SheetJS)
 │   ├── state/
-│   │   └── store.js       # Zentraler State Manager
+│   │   └── store.js            # Zentraler State Manager
 │   ├── services/
-│   │   ├── match.js       # Match/Leg/Throw DB-Operationen
-│   │   └── stats.js       # Statistik-Berechnungen
+│   │   ├── match.js            # Match/Leg/Throw DB-Operationen
+│   │   └── stats.js            # Statistik-Berechnungen + CSV
 │   ├── ui/
+│   │   ├── auth.js             # Login & Register Pages
+│   │   ├── dashboard.js        # Spieltag-Verwaltung & Konfiguration
+│   │   ├── scorer.js           # Board-Auswahl & Match-Liste
+│   │   ├── players.js          # Spielerverwaltung (CRUD)
+│   │   ├── stats.js            # Statistik-Seite mit Rangliste
 │   │   └── livescorer/
-│   │       ├── index.js   # Live-Scoring Hauptmodul
-│   │       ├── display.js # UI-Update-Funktionen
-│   │       ├── events.js  # Event-Handler
-│   │       ├── keypad.js  # Ziffernblock-Logik
-│   │       └── game-logic.js # Leg/Set/Match-Ende
+│   │       ├── index.js        # Livescorer-Hauptmodul & HTML
+│   │       ├── score-processor.js  # Zentrale Score-Verarbeitung
+│   │       ├── events.js       # Quick-Score Event-Delegation
+│   │       ├── keypad.js       # Numpad + Score/Rest-Modus
+│   │       ├── display.js      # Alle UI-Updates
+│   │       ├── game-logic.js   # Leg/Set/Match-Ende + Endscreen
+│   │       └── dialogs.js      # Checkout, Bust-Toast, Overlays
 │   └── utils/
-│       ├── constants.js   # Konstanten (501, Player-Keys, etc.)
-│       └── players.js     # Spieler-Utilities
-├── CLAUDE.md              # Technische Dokumentation für Entwickler
-├── MOCK-MODE.md           # Mock-Modus Anleitung
-└── README.md              # Diese Datei
+│       ├── constants.js        # Konstanten, Dart-Verteilung
+│       ├── players.js          # Spieler-Utilities
+│       └── checkouts.js        # Checkout-Tabelle & Vorschläge
+├── CLAUDE.md                   # Technische Dokumentation
+├── MOCK-MODE.md                # Mock-Modus Anleitung
+└── README.md                   # Diese Datei
 ```
 
 ---
@@ -111,186 +124,124 @@ npm install
 npm run build:css
 ```
 
-Dies kompiliert `css/tailwind.css` → `css/output.css` mit Minifizierung.
-
 ### Debugging
 
-Öffne die Browser-Konsole (F12), um detaillierte Logs zu sehen:
+Browser-Konsole (F12):
 
 ```javascript
-// Mock-Datenbank inspizieren
-debugMockDB()
-
-// Mock-Daten komplett zurücksetzen
-resetMockDB()
+debugMockDB()    // Mock-Datenbank inspizieren
+resetMockDB()    // Alle Daten löschen & neu laden
 ```
 
 ### Technische Dokumentation
 
-📖 **Für Entwickler:** Siehe [CLAUDE.md](./CLAUDE.md)
-- Architektur & Module
-- State Management
-- Event Handling
-- Datenbank-Schema
-- Supabase-Integration
+📖 **Für Entwickler:** Siehe [CLAUDE.md](./CLAUDE.md) — Architektur, State Management, DB-Schema
 
 ---
 
-## 🔄 Wechsel zu echtem Backend
-
-Die App kann mit **Supabase** als echtes Backend betrieben werden:
+## 🔄 Wechsel zu echtem Backend (Supabase)
 
 ### 1. Supabase-Projekt einrichten
 
-1. Erstelle ein kostenloses Projekt auf [supabase.com](https://supabase.com)
+1. Erstelle ein Projekt auf [supabase.com](https://supabase.com)
 2. Führe das Datenbank-Schema aus (siehe `CLAUDE.md`)
-3. Kopiere deine Credentials
+3. Kopiere URL + Anon-Key
 
 ### 2. Credentials eintragen
 
 Bearbeite `js/supabase.js`:
 
 ```javascript
-const supabaseUrl = 'DEINE_SUPABASE_URL';
-const supabaseAnonKey = 'DEIN_ANON_KEY';
+const SUPABASE_URL = 'DEINE_SUPABASE_URL';
+const SUPABASE_KEY = 'DEIN_ANON_KEY';
 ```
 
 ### 3. Imports ändern
 
-Ändere in **2 Dateien** den Import von `supabase-mock.js` zu `supabase.js`:
+Ändere in **allen Dateien** den Import von `supabase-mock.js` zu `supabase.js`:
 
-- `js/main.js` (Zeile 3)
-- `js/auth.js` (Zeile 2)
+```bash
+# Betroffene Dateien:
+js/main.js
+js/auth.js
+js/services/match.js
+js/services/stats.js
+js/ui/dashboard.js
+js/ui/scorer.js
+js/ui/players.js
+js/ui/stats.js
+```
 
 ```javascript
 // Von:
 import { supabase } from './supabase-mock.js';
-
 // Zu:
 import { supabase } from './supabase.js';
 ```
 
-Fertig! Die App nutzt jetzt echte Authentifizierung und Cloud-Speicherung.
+> **Tipp:** Suche & Ersetze `supabase-mock.js` → `supabase.js` im gesamten `js/`-Ordner.
+
+### 4. Auto-Login deaktivieren
+
+In `js/main.js` die `autoLoginForTesting()`-Funktion entfernen und die Login-Routen aktivieren.
 
 ---
 
 ## 🎮 Spielanleitung
 
-### 1. Spieltag erstellen
+### 1. Spieler anlegen
 
-1. **Dashboard öffnen** (nach Login automatisch)
+1. **Navigation → „Spieler"**
+2. Namen eingeben → „Hinzufügen"
+
+### 2. Spieltag erstellen
+
+1. **Dashboard** öffnen
 2. **Spieler auswählen** (blau anklicken, mindestens 2)
-3. **Konfiguration:**
-   - Best of Sets (z.B. 3)
-   - Best of Legs (z.B. 3)
-   - Anzahl Boards (1-8)
-4. **"Spieltag starten"** klicken
-   - Automatische Round-Robin-Paarungen werden erstellt
+3. **Konfiguration:** Best-of-Sets, Best-of-Legs, Boards, Double-Out
+4. Optional: **Vorlage speichern** für schnelles Wiederholen
+5. **„Spieltag starten"** → Round-Robin-Paarungen werden erstellt
 
-### 2. Match starten
+### 3. Match spielen
 
-1. **Scorer öffnen** (Navigation oder Match aus Liste wählen)
-2. **Match anklicken** (z.B. "Alice vs Bob, Board 1")
-3. **Startspieler wählen** (nur beim ersten Leg)
+1. **Scorer** → Board wählen → Match anklicken
+2. **Startspieler wählen** (nur beim ersten Leg)
+3. **Score eingeben:**
+   - **Numpad:** Zahl tippen → OK drücken
+   - **Quick-Score:** Button mit Score klicken (z.B. 60, 100, 180)
+   - **Rest-Modus:** „🔄 Rest" aktivieren → verbleibende Punkte eingeben
+4. Bei Checkout: Darts zum Finish wählen + optional Bullfinish markieren
 
-### 3. Score eingeben
+### 4. Statistiken
 
-**Variante A: Ziffernblock (flexibel)**
-1. Zahlen eingeben (z.B. "20")
-2. Multiplier wählen: **S** (Single), **D** (Double), **T** (Triple)
-3. "Weiter →" für nächsten Dart
-4. Nach 3 Darts: "Score eingeben"
-
-**Variante B: Quick-Score-Buttons**
-- Klicke auf vorgefertigte Scores (0, 26, 41, 60, 81, 100, 140, 180)
-- Score wird automatisch auf 3 Darts verteilt
-
-### 4. Finish mit Double-Out
-
-Bei Remaining = 32:
-1. Gib "16" ein
-2. Klicke **D** (Double-Button)
-3. Display zeigt "D16"
-4. "Score eingeben" → Leg gewonnen! 🎉
-
-**Ohne D-Button:** BUST-Nachricht "Muss mit Double finishen"
-
-### 5. Statistiken ansehen
-
-Während des Matches:
-- Klicke auf **"Details ▼"** im Statistik-Panel
-
-Nach dem Match:
-- Automatischer Match-Ende-Screen mit Winner-Animation
-
----
-
-## 🧪 Mock-Modus Details
-
-**Aktueller Status:** ✅ Mock-Modus AKTIV
-
-**Was funktioniert:**
-- ✅ Volle App-Funktionalität
-- ✅ Alle Features (Scoring, Stats, Undo)
-- ✅ Multi-Board-Support
-- ✅ localStorage-Persistierung
-
-**Einschränkungen:**
-- ❌ Keine echte Authentifizierung
-- ❌ Keine Sync zwischen Geräten
-- ❌ Daten gehen bei Cache-Löschen verloren
-
-📖 **Ausführliche Anleitung:** [MOCK-MODE.md](./MOCK-MODE.md)
+- **Während des Matches:** Stats-Panel aufklappen
+- **Nach Match-Ende:** Detaillierter Endscreen mit Export-Option
+- **Statistik-Seite:** Rangliste, Spieler-Detail, CSV-Export
 
 ---
 
 ## 📦 Tech Stack
 
-- **Frontend:** Vanilla JavaScript (ES6 modules)
-- **Styling:** Tailwind CSS (via CDN)
-- **Backend (optional):** Supabase (PostgreSQL + Real-time)
-- **PWA:** Service Worker für Offline-Support
-- **Build:** Keine Bundler - direkt im Browser lauffähig
+| Technologie | Verwendung |
+|---|---|
+| Vanilla JavaScript | ES6 Modules, kein Framework |
+| Tailwind CSS | Via CDN, Dark Mode |
+| Supabase | PostgreSQL + Auth + Realtime (optional) |
+| localStorage | Mock-Backend für Offline-Betrieb |
+| PWA | Service Worker für Offline-Support |
+
+**Kein Build-Step nötig** — direkt im Browser lauffähig.
 
 ---
 
 ## 🐛 Troubleshooting
 
-### Server startet nicht
-```bash
-# Prüfe ob Port 8000 frei ist
-lsof -i :8000
-
-# Verwende anderen Port
-python -m http.server 8001
-```
-
-### Seite lädt nicht
-- Browser-Cache leeren (Strg+Shift+R / Cmd+Shift+R)
-- Konsole öffnen (F12) und Fehler prüfen
-
-### Mock-Daten zurücksetzen
-```javascript
-// In Browser-Konsole (F12):
-localStorage.clear();
-location.reload();
-```
-
-### CSS-Änderungen werden nicht angezeigt
-```bash
-npm run build:css
-# Dann Seite neu laden
-```
-
----
-
-## 🤝 Contributing
-
-Dieses Projekt nutzt:
-- GitHub Issues für Bug-Reports
-- Pull Requests für Features
-
-Siehe [CLAUDE.md](./CLAUDE.md) für Architektur-Details.
+| Problem | Lösung |
+|---|---|
+| Server startet nicht | `lsof -i :8000` prüfen, anderen Port verwenden |
+| Seite lädt nicht | Cache leeren (Cmd+Shift+R), Konsole prüfen |
+| Mock-Daten zurücksetzen | `localStorage.clear(); location.reload();` |
+| CSS-Änderungen nicht sichtbar | `npm run build:css` ausführen |
 
 ---
 
@@ -300,24 +251,4 @@ ISC License
 
 ---
 
-## 🎯 Projekt-Status
-
-**Aktuelle Version:** 1.0.0 (Voll funktionsfähig im Mock-Modus)
-
-**Letzte Updates:**
-- ✅ S/D/T Multiplier-Buttons
-- ✅ Checkout-Vorschläge
-- ✅ Live-Statistiken
-- ✅ Match-Ende-Screen
-- ✅ BUST-Validierung
-- ✅ Undo-Funktion
-
-**Roadmap:**
-- Optional: Animations & Feedback verbessern
-- Optional: Backend-Integration mit Supabase
-
----
-
 **Happy Darting! 🎯**
-
-Made with ❤️ for the Darts Community
