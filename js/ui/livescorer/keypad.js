@@ -1,4 +1,5 @@
 // Vereinfachte Score-Eingabe - Gesamtpunktzahl statt Einzeldarts
+// Unterstützt Score-Modus (geworfene Punkte) und Rest-Modus (verbleibende Punkte)
 import * as store from '../../state/store.js';
 import { saveThrow } from '../../services/match.js';
 import { getPlayerId, switchPlayer } from '../../utils/players.js';
@@ -10,6 +11,9 @@ import { showCheckoutDialog, showBustToast } from './dialogs.js';
 
 // Eingabe-State
 let currentInput = '';
+
+// Eingabe-Modus: 'score' (geworfene Punkte) oder 'rest' (verbleibende Punkte)
+let inputMode = 'score';
 
 /**
  * Setzt die Score-Eingabe zurück
@@ -26,17 +30,92 @@ export function getCurrentInput() {
   return currentInput;
 }
 
+/**
+ * Gibt den aktuellen Eingabemodus zurück
+ */
+export function getInputMode() {
+  return inputMode;
+}
+
+/**
+ * Wechselt den Eingabemodus zwischen 'score' und 'rest'
+ */
+export function toggleInputMode() {
+  inputMode = inputMode === 'score' ? 'rest' : 'score';
+  currentInput = '';
+  updateScoreDisplay();
+  updateModeToggleUI();
+}
+
 function updateScoreDisplay() {
   const display = document.getElementById('scoreDisplay');
   if (display) {
     display.textContent = currentInput || '0';
   }
+
+  // Zeige den berechneten Score an wenn im Rest-Modus
+  const calcEl = document.getElementById('calculatedScore');
+  if (calcEl) {
+    if (inputMode === 'rest' && currentInput) {
+      const currentPlayer = store.getCurrentPlayer();
+      const remaining = store.getRemaining(currentPlayer);
+      const restValue = parseInt(currentInput, 10);
+      const calculatedScore = remaining - restValue;
+      if (calculatedScore >= 0 && calculatedScore <= 180) {
+        calcEl.textContent = `= ${calculatedScore} geworfen`;
+        calcEl.classList.remove('hidden', 'text-red-500');
+        calcEl.classList.add('text-emerald-600', 'dark:text-emerald-400');
+      } else if (restValue > remaining) {
+        calcEl.textContent = 'Ungültig!';
+        calcEl.classList.remove('hidden', 'text-emerald-600');
+        calcEl.classList.add('text-red-500');
+      } else {
+        calcEl.textContent = `= ${calculatedScore} (>180!)`;
+        calcEl.classList.remove('hidden', 'text-emerald-600');
+        calcEl.classList.add('text-red-500');
+      }
+    } else {
+      calcEl.classList.add('hidden');
+    }
+  }
+}
+
+function updateModeToggleUI() {
+  const modeToggle = document.getElementById('inputModeToggle');
+  const modeLabel = document.getElementById('inputModeLabel');
+  const modeDesc = document.getElementById('inputModeDesc');
+  const scoreDisplay = document.getElementById('scoreDisplay');
+
+  if (modeToggle) {
+    if (inputMode === 'rest') {
+      modeToggle.classList.remove('bg-blue-500', 'hover:bg-blue-600');
+      modeToggle.classList.add('bg-amber-500', 'hover:bg-amber-600');
+    } else {
+      modeToggle.classList.remove('bg-amber-500', 'hover:bg-amber-600');
+      modeToggle.classList.add('bg-blue-500', 'hover:bg-blue-600');
+    }
+  }
+  if (modeLabel) {
+    modeLabel.textContent = inputMode === 'score' ? 'Score' : 'Rest';
+  }
+  if (modeDesc) {
+    modeDesc.textContent = inputMode === 'score'
+      ? 'Geworfene Punkte eingeben'
+      : 'Verbleibende Punkte eingeben';
+  }
+  if (scoreDisplay) {
+    if (inputMode === 'rest') {
+      scoreDisplay.classList.remove('border-gray-300', 'dark:border-slate-500');
+      scoreDisplay.classList.add('border-amber-400', 'dark:border-amber-500');
+    } else {
+      scoreDisplay.classList.remove('border-amber-400', 'dark:border-amber-500');
+      scoreDisplay.classList.add('border-gray-300', 'dark:border-slate-500');
+    }
+  }
 }
 
 /**
  * Verarbeitet einen Score (von Numpad oder Quick-Score)
- * @param {number} score - Gesamtpunktzahl der Aufnahme
- * @param {Object} options - { bestSet, bestLeg, finishDarts, bullfinish }
  */
 async function processScore(score, options = {}) {
   const { bestSet = 3, bestLeg = 3, finishDarts = 3, bullfinish = false } = options;
@@ -71,7 +150,6 @@ async function processScore(score, options = {}) {
 
   const isFinish = newRemaining === 0;
 
-  // Bullfinish im Store setzen
   if (bullfinish) {
     store.setBullfinish(true);
   }
@@ -146,7 +224,6 @@ async function handleScoreSubmit(score, options = {}) {
       return;
     }
 
-    // Checkout-Dialog mit smarter Dart-Begrenzung + Bullfinish-Frage
     const result = await showCheckoutDialog(remaining);
     await processScore(score, {
       ...options,
@@ -154,7 +231,6 @@ async function handleScoreSubmit(score, options = {}) {
       bullfinish: result.bullfinish
     });
   } else {
-    // Normaler Score
     await processScore(score, { ...options, finishDarts: 3, bullfinish: false });
   }
 }
@@ -181,7 +257,15 @@ export function initScoreInput(container, options = {}) {
 
       const newInput = currentInput + digit;
       const newValue = parseInt(newInput, 10);
-      if (newValue > 180) return;
+
+      if (inputMode === 'rest') {
+        // Im Rest-Modus: Max ist der aktuelle Reststand des Spielers
+        const currentPlayer = store.getCurrentPlayer();
+        const remaining = store.getRemaining(currentPlayer);
+        if (newValue > remaining) return;
+      } else {
+        if (newValue > 180) return;
+      }
 
       currentInput = newInput;
       updateScoreDisplay();
@@ -213,19 +297,41 @@ export function initScoreInput(container, options = {}) {
   if (submitBtn) {
     submitBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      const score = parseInt(currentInput, 10);
+      const rawValue = parseInt(currentInput, 10);
 
-      if (isNaN(score) || score < 0) {
+      if (isNaN(rawValue) || rawValue < 0) {
         currentInput = '';
         updateScoreDisplay();
         return;
       }
 
-      if (score > 180) {
-        showBustToast('Max 180! 💥');
-        currentInput = '';
-        updateScoreDisplay();
-        return;
+      let score;
+      if (inputMode === 'rest') {
+        // Rest-Modus: Score = aktueller Rest - eingegebener Rest
+        const currentPlayer = store.getCurrentPlayer();
+        const remaining = store.getRemaining(currentPlayer);
+        score = remaining - rawValue;
+
+        if (score < 0) {
+          showBustToast('Rest zu hoch! 💥');
+          currentInput = '';
+          updateScoreDisplay();
+          return;
+        }
+        if (score > 180) {
+          showBustToast('Max 180 pro Aufnahme! 💥');
+          currentInput = '';
+          updateScoreDisplay();
+          return;
+        }
+      } else {
+        score = rawValue;
+        if (score > 180) {
+          showBustToast('Max 180! 💥');
+          currentInput = '';
+          updateScoreDisplay();
+          return;
+        }
       }
 
       currentInput = '';
@@ -244,4 +350,16 @@ export function initScoreInput(container, options = {}) {
       await processScore(0, { bestSet, bestLeg });
     });
   }
+
+  // --- Eingabe-Modus Toggle ---
+  const modeToggle = container.querySelector('#inputModeToggle');
+  if (modeToggle) {
+    modeToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleInputMode();
+    });
+  }
+
+  // Initiales UI-Update für den Modus
+  updateModeToggleUI();
 }
