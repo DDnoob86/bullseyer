@@ -1,399 +1,298 @@
-// Keypad-Logik für den Livescorer
+// Vereinfachte Score-Eingabe - Gesamtpunktzahl statt Einzeldarts
+// Wie DartCounter: Zahl eintippen → OK → bei Checkout: "Wie viele Darts?"
 import * as store from '../../state/store.js';
 import { saveThrow } from '../../services/match.js';
 import { getPlayerId, switchPlayer } from '../../utils/players.js';
-import { SCORE_THRESHOLDS, MULTIPLIER } from '../../utils/constants.js';
+import { distributeDarts } from '../../utils/constants.js';
+import { isValidCheckout } from '../../utils/checkouts.js';
 import { checkBust, handleLegEnd } from './game-logic.js';
-import { updateRestpunkteUI, updateSetsLegsUI, updateAverages, updateDetailedStats } from './display.js';
+import { updateAllDisplays, updateCheckoutHint } from './display.js';
 
-// Keypad State
-let currentDartIndex = 0;
-let darts = [0, 0, 0];
-let dartMultipliers = [MULTIPLIER.SINGLE, MULTIPLIER.SINGLE, MULTIPLIER.SINGLE];
+// Eingabe-State
+let currentInput = '';
 
 /**
- * Initialisiert den Keypad-State
+ * Setzt die Score-Eingabe zurück
  */
-export function initKeypadState() {
-  currentDartIndex = 0;
-  darts = [0, 0, 0];
-  dartMultipliers = [MULTIPLIER.SINGLE, MULTIPLIER.SINGLE, MULTIPLIER.SINGLE];
+export function resetScoreInput() {
+  currentInput = '';
+  updateScoreDisplay();
 }
 
 /**
- * Gibt den aktuellen Keypad-State zurück
+ * Gibt den aktuellen Eingabewert zurück
  */
-export function getKeypadState() {
-  return {
-    currentDartIndex,
-    darts: [...darts],
-    dartMultipliers: [...dartMultipliers]
-  };
+export function getCurrentInput() {
+  return currentInput;
 }
 
-/**
- * Setzt den Wert eines Darts
- */
-export function setDartValue(dartIndex, value) {
-  if (dartIndex >= 0 && dartIndex < 3) {
-    darts[dartIndex] = Math.min(value, SCORE_THRESHOLDS.MAX_SINGLE_DART);
+function updateScoreDisplay() {
+  const display = document.getElementById('scoreDisplay');
+  if (display) {
+    display.textContent = currentInput || '0';
   }
 }
 
 /**
- * Setzt den Multiplier eines Darts
+ * Zeigt einen Bust-Toast an
  */
-export function setDartMultiplier(dartIndex, multiplier) {
-  if (dartIndex >= 0 && dartIndex < 3) {
-    dartMultipliers[dartIndex] = multiplier;
-  }
+function showBustToast(message) {
+  const toast = document.getElementById('bustToast');
+  if (!toast) return;
+
+  const textEl = toast.querySelector('div');
+  if (textEl) textEl.textContent = message || 'BUST! 💥';
+
+  toast.classList.remove('hidden');
+  setTimeout(() => toast.classList.add('hidden'), 1200);
 }
 
 /**
- * Fügt eine Ziffer zum aktuellen Dart hinzu
+ * Verarbeitet einen Score (von Numpad oder Quick-Score)
+ * @param {number} score - Gesamtpunktzahl der Aufnahme
+ * @param {Object} options - { bestSet, bestLeg, finishDarts }
  */
-export function addDigitToCurrentDart(digit) {
-  const currentValue = darts[currentDartIndex];
-  if (currentValue === 0) {
-    darts[currentDartIndex] = parseInt(digit);
-  } else {
-    const newValue = parseInt(currentValue.toString() + digit);
-    if (newValue <= SCORE_THRESHOLDS.MAX_SINGLE_DART) {
-      darts[currentDartIndex] = newValue;
-    }
-  }
-  return darts[currentDartIndex];
-}
+async function processScore(score, options = {}) {
+  const { bestSet = 3, bestLeg = 3, finishDarts = 3 } = options;
 
-/**
- * Entfernt die letzte Ziffer vom aktuellen Dart
- */
-export function backspaceCurrentDart() {
-  const currentValue = darts[currentDartIndex];
-  if (currentValue >= 10) {
-    darts[currentDartIndex] = Math.floor(currentValue / 10);
-  } else {
-    darts[currentDartIndex] = 0;
-  }
-  return darts[currentDartIndex];
-}
-
-/**
- * Setzt alle Darts zurück
- */
-export function clearAllDarts() {
-  darts = [0, 0, 0];
-  dartMultipliers = [MULTIPLIER.SINGLE, MULTIPLIER.SINGLE, MULTIPLIER.SINGLE];
-  currentDartIndex = 0;
-}
-
-/**
- * Wechselt zum nächsten Dart
- * @returns {boolean} True wenn alle Darts eingegeben wurden
- */
-export function nextDart() {
-  if (currentDartIndex < 2) {
-    currentDartIndex++;
-    return false;
-  }
-  return true;
-}
-
-/**
- * Berechnet den Gesamt-Score
- */
-export function calculateTotalScore() {
-  return (darts[0] * dartMultipliers[0]) +
-         (darts[1] * dartMultipliers[1]) +
-         (darts[2] * dartMultipliers[2]);
-}
-
-/**
- * Findet den Multiplier des letzten eingegebenen Darts
- * @returns {number} Multiplier des letzten Darts mit Wert > 0
- */
-function getLastEnteredDartMultiplier() {
-  for (let i = currentDartIndex; i >= 0; i--) {
-    if (darts[i] > 0) {
-      return dartMultipliers[i];
-    }
-  }
-  return MULTIPLIER.SINGLE; // Fallback
-}
-
-/**
- * Prüft ob der aktuelle Score ein gültiges Finish ist
- * @returns {boolean} True wenn Finish erreicht (Score = Remaining und Double-Out erfüllt)
- */
-function isCurrentScoreFinish() {
+  const match = store.getCurrentMatch();
   const currentPlayer = store.getCurrentPlayer();
   const remaining = store.getRemaining(currentPlayer);
-  const currentScore = calculateTotalScore();
-  const match = store.getCurrentMatch();
+  const isDoubleOut = match?.double_out;
 
-  // Kein Finish wenn Score != Remaining
-  if (currentScore !== remaining || currentScore === 0) return false;
+  // Bust-Check
+  const newRemaining = remaining - score;
 
-  // Bei Double-Out: Letzter eingegebener Dart muss Double sein
-  if (match?.double_out) {
-    // Finde den letzten eingegebenen Dart (nicht 0)
-    for (let i = currentDartIndex; i >= 0; i--) {
-      if (darts[i] > 0) {
-        return dartMultipliers[i] === MULTIPLIER.DOUBLE;
-      }
-    }
-    return false;
-  }
-
-  return true;
-}
-
-/**
- * Aktualisiert die Dart-Displays im UI
- * @param {HTMLElement} container - Der Container mit den Dart-Displays
- */
-export function updateDartDisplays(container) {
-  const displays = [
-    container.querySelector('#dart1Display'),
-    container.querySelector('#dart2Display'),
-    container.querySelector('#dart3Display')
-  ];
-  const totalDisplay = container.querySelector('#totalDisplay');
-
-  displays.forEach((display, i) => {
-    if (display) {
-      const value = darts[i];
-      const mult = dartMultipliers[i];
-
-      // Prefix je nach Multiplier
-      let prefix = '';
-      if (value > 0) {
-        if (mult === MULTIPLIER.DOUBLE) prefix = 'D';
-        else if (mult === MULTIPLIER.TRIPLE) prefix = 'T';
-        else prefix = 'S';
-      }
-
-      display.textContent = value > 0 ? prefix + value : value;
-
-      // Highlight current dart
-      if (i === currentDartIndex) {
-        display.classList.add('border-4', 'border-emerald-500');
-        display.classList.remove('border-2', 'border-gray-300');
-      } else {
-        display.classList.remove('border-4', 'border-emerald-500');
-        display.classList.add('border-2', 'border-gray-300');
-      }
-    }
-  });
-
-  if (totalDisplay) {
-    totalDisplay.textContent = calculateTotalScore();
-  }
-}
-
-/**
- * Initialisiert die Keypad Event-Handler
- * @param {HTMLElement} container - Der App-Container
- * @param {Object} options - Optionen { bestSet, bestLeg, onScoreSubmitted }
- */
-export function initKeypadHandlers(container, options = {}) {
-  const { bestSet = 3, bestLeg = 3, onScoreSubmitted } = options;
-
-  const keypadContainer = container.querySelector('.grid.grid-cols-3.gap-3.mb-4');
-  if (!keypadContainer || keypadContainer.hasAttribute('data-bullseyer-initialized')) {
+  if (score > remaining) {
+    showBustToast('BUST! Zu hoch 💥');
+    store.setCurrentPlayer(switchPlayer(currentPlayer));
+    updateAllDisplays(bestSet, bestLeg);
+    updateCheckoutHint();
     return;
   }
-  keypadContainer.setAttribute('data-bullseyer-initialized', 'true');
 
-  // Hilfsfunktion: Submit-Button Text aktualisieren
-  const updateSubmitButtonText = () => {
-    const submitBtn = container.querySelector('#submitScore');
-    if (submitBtn) {
-      if (isCurrentScoreFinish()) {
-        submitBtn.textContent = 'Finish! ✓';
-        submitBtn.classList.add('bg-gradient-to-r', 'from-amber-500', 'to-amber-600');
-        submitBtn.classList.remove('from-emerald-500', 'to-emerald-600');
-      } else {
-        submitBtn.textContent = currentDartIndex === 2 ? 'Score eingeben' : 'Weiter →';
-        submitBtn.classList.remove('from-amber-500', 'to-amber-600');
-        submitBtn.classList.add('from-emerald-500', 'to-emerald-600');
-      }
+  if (newRemaining === 1 && isDoubleOut) {
+    showBustToast('BUST! Rest = 1 💥');
+    store.setCurrentPlayer(switchPlayer(currentPlayer));
+    updateAllDisplays(bestSet, bestLeg);
+    updateCheckoutHint();
+    return;
+  }
+
+  if (newRemaining === 0 && isDoubleOut && !isValidCheckout(remaining)) {
+    showBustToast('BUST! Kein Checkout 💥');
+    store.setCurrentPlayer(switchPlayer(currentPlayer));
+    updateAllDisplays(bestSet, bestLeg);
+    updateCheckoutHint();
+    return;
+  }
+
+  const isFinish = newRemaining === 0;
+
+  // Wurf in History speichern
+  store.addThrow({
+    player: currentPlayer,
+    score,
+    remP1: store.getRemainingP1(),
+    remP2: store.getRemainingP2(),
+    legsWon: store.getLegsWon(),
+    setsWon: store.getSetsWon(),
+    legNo: store.getCurrentLegNo(),
+    setNo: store.getCurrentSetNo(),
+    bullfinish: store.getBullfinish(),
+    legStarter: store.getLegStarter(),
+    gameStarter: store.getGameStarter()
+  });
+
+  // Wurf in DB speichern
+  const leg = store.getCurrentLeg();
+  const dartValues = distributeDarts(score);
+  if (match && leg) {
+    await saveThrow({
+      matchId: match.id,
+      legId: leg.id,
+      playerId: getPlayerId(match, currentPlayer),
+      dart1: dartValues[0],
+      dart2: dartValues[1],
+      dart3: dartValues[2],
+      total: score,
+      isFinish,
+      orderNo: store.getThrowHistory().length
+    });
+  }
+
+  // Remaining aktualisieren
+  store.setRemaining(currentPlayer, newRemaining);
+
+  // Spieler wechseln
+  store.setCurrentPlayer(switchPlayer(currentPlayer));
+
+  // UI aktualisieren
+  updateAllDisplays(bestSet, bestLeg);
+  updateCheckoutHint();
+
+  console.log('[Keypad] Score verarbeitet:', score, 'Finish:', isFinish, 'Darts:', finishDarts);
+
+  // Leg-Ende prüfen
+  if (isFinish) {
+    // Finish-Darts am Leg speichern
+    if (leg) leg.finishDarts = finishDarts;
+    await handleLegEnd('Score Input');
+    updateCheckoutHint();
+  }
+}
+
+/**
+ * Öffnet den Checkout-Dialog und wartet auf Dart-Auswahl
+ * @param {number} remaining - Der Reststand der gecheckt wird
+ * @returns {Promise<number>} Anzahl Darts (1, 2 oder 3)
+ */
+function showCheckoutDialog(remaining) {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById('checkoutDialog');
+    const text = document.getElementById('checkoutText');
+    if (!dialog) { resolve(3); return; }
+
+    text.textContent = `${remaining} ausgecheckt! Wie viele Darts?`;
+
+    dialog.classList.remove('hidden');
+    dialog.classList.add('flex');
+
+    // Handler für Dart-Buttons
+    const buttons = dialog.querySelectorAll('.checkout-dart-btn');
+    const handler = (e) => {
+      const darts = parseInt(e.target.dataset.darts);
+      // Cleanup
+      buttons.forEach(b => b.removeEventListener('click', handler));
+      dialog.classList.add('hidden');
+      dialog.classList.remove('flex');
+      resolve(darts);
+    };
+
+    buttons.forEach(b => b.addEventListener('click', handler));
+  });
+}
+
+/**
+ * Verarbeitet eine Score-Eingabe mit Checkout-Dialog wenn nötig
+ */
+async function handleScoreSubmit(score, options = {}) {
+  const { bestSet = 3, bestLeg = 3 } = options;
+  const match = store.getCurrentMatch();
+  const currentPlayer = store.getCurrentPlayer();
+  const remaining = store.getRemaining(currentPlayer);
+  const isDoubleOut = match?.double_out;
+  const newRemaining = remaining - score;
+
+  // Ist es ein Checkout?
+  if (newRemaining === 0) {
+    if (isDoubleOut && !isValidCheckout(remaining)) {
+      // Unmöglicher Checkout → Bust
+      showBustToast('BUST! Kein Checkout 💥');
+      store.setCurrentPlayer(switchPlayer(currentPlayer));
+      updateAllDisplays(bestSet, bestLeg);
+      updateCheckoutHint();
+      return;
     }
-  };
 
-  // Ziffern-Buttons
-  const keypadBtns = container.querySelectorAll('.keypad-btn');
-  keypadBtns.forEach(btn => {
+    // Checkout-Dialog anzeigen
+    const finishDarts = await showCheckoutDialog(remaining);
+    await processScore(score, { ...options, finishDarts });
+  } else {
+    // Normaler Score
+    await processScore(score, { ...options, finishDarts: 3 });
+  }
+}
+
+/**
+ * Initialisiert die vereinfachte Score-Eingabe
+ */
+export function initScoreInput(container, options = {}) {
+  const { bestSet = 3, bestLeg = 3 } = options;
+
+  // Prüfe ob schon initialisiert
+  const inputArea = container.querySelector('#scoreInputArea');
+  if (!inputArea || inputArea.hasAttribute('data-bullseyer-initialized')) return;
+  inputArea.setAttribute('data-bullseyer-initialized', 'true');
+
+  currentInput = '';
+  updateScoreDisplay();
+
+  // --- Numpad Ziffern ---
+  container.querySelectorAll('.numpad-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
       const digit = btn.getAttribute('data-digit');
-      if (digit !== null) {
-        addDigitToCurrentDart(digit);
-        updateDartDisplays(container);
-        updateSubmitButtonText();
-      }
+      if (digit === null) return;
+
+      const newInput = currentInput + digit;
+      const newValue = parseInt(newInput, 10);
+
+      // Max 180 Punkte pro Aufnahme
+      if (newValue > 180) return;
+
+      currentInput = newInput;
+      updateScoreDisplay();
     });
   });
 
-  // Multiplier Buttons
-  const multBtns = container.querySelectorAll('.mult-btn');
-  multBtns.forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const dartIndex = parseInt(btn.getAttribute('data-dart'));
-      const mult = parseInt(btn.getAttribute('data-mult'));
-
-      setDartMultiplier(dartIndex, mult);
-
-      // Button-Highlight aktualisieren
-      const dartGroup = btn.parentElement;
-      dartGroup.querySelectorAll('.mult-btn').forEach(b => {
-        if (b === btn) {
-          b.classList.add('ring-2', 'ring-white', 'ring-offset-2');
-        } else {
-          b.classList.remove('ring-2', 'ring-white', 'ring-offset-2');
-        }
-      });
-
-      updateDartDisplays(container);
-      updateSubmitButtonText();
-    });
-  });
-
-  // Clear Button
+  // --- Clear ---
   const clearBtn = container.querySelector('#clearBtn');
   if (clearBtn) {
     clearBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      clearAllDarts();
-      resetMultiplierButtons(container);
-      updateDartDisplays(container);
+      currentInput = '';
+      updateScoreDisplay();
     });
   }
 
-  // Backspace Button
+  // --- Backspace ---
   const backspaceBtn = container.querySelector('#backspaceBtn');
   if (backspaceBtn) {
     backspaceBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      backspaceCurrentDart();
-      updateDartDisplays(container);
+      currentInput = currentInput.slice(0, -1);
+      updateScoreDisplay();
     });
   }
 
-  // Submit Button
+  // --- OK / Submit ---
   const submitBtn = container.querySelector('#submitScore');
   if (submitBtn) {
     submitBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
+      const score = parseInt(currentInput, 10);
 
-      // Prüfe ob aktueller Score ein Finish ist
-      const isFinish = isCurrentScoreFinish();
-
-      // Wenn noch nicht alle 3 Darts UND kein Finish: zum nächsten Dart wechseln
-      if (!isFinish && !nextDart()) {
-        updateDartDisplays(container);
-        // Prüfe nach Dart-Wechsel ob jetzt ein Finish möglich ist
-        const finishPossible = isCurrentScoreFinish();
-        submitBtn.textContent = finishPossible ? 'Finish! ✓' : (currentDartIndex === 2 ? 'Score eingeben' : 'Weiter →');
+      if (isNaN(score) || score < 0) {
+        currentInput = '';
+        updateScoreDisplay();
         return;
       }
 
-      // Score berechnen und verarbeiten
-      const score = calculateTotalScore();
-      const match = store.getCurrentMatch();
-      const currentPlayer = store.getCurrentPlayer();
-      const remaining = store.getRemaining(currentPlayer);
-
-      // Bust-Check - verwende den Multiplier des letzten eingegebenen Darts
-      const lastMultiplier = getLastEnteredDartMultiplier();
-      const bustResult = checkBust(score, remaining, match?.double_out, lastMultiplier);
-      if (bustResult.isBust) {
-        alert(bustResult.reason);
-        clearAllDarts();
-        resetMultiplierButtons(container);
-        updateDartDisplays(container);
-        submitBtn.textContent = 'Weiter →';
-
-        // Spieler wechseln bei Bust
-        store.setCurrentPlayer(switchPlayer(currentPlayer));
-        updateRestpunkteUI();
+      if (score > 180) {
+        showBustToast('Max 180! 💥');
+        currentInput = '';
+        updateScoreDisplay();
         return;
       }
 
-      // Wurf in History speichern
-      store.addThrow({
-        player: currentPlayer,
-        score,
-        remP1: store.getRemainingP1(),
-        remP2: store.getRemainingP2(),
-        legsWon: store.getLegsWon(),
-        setsWon: store.getSetsWon(),
-        legNo: store.getCurrentLegNo(),
-        setNo: store.getCurrentSetNo(),
-        bullfinish: store.getBullfinish(),
-        legStarter: store.getLegStarter(),
-        gameStarter: store.getGameStarter()
-      });
+      currentInput = '';
+      updateScoreDisplay();
 
-      // Wurf in DB speichern
-      const leg = store.getCurrentLeg();
-      if (match && leg) {
-        await saveThrow({
-          matchId: match.id,
-          legId: leg.id,
-          playerId: getPlayerId(match, currentPlayer),
-          dart1: darts[0] * dartMultipliers[0],
-          dart2: darts[1] * dartMultipliers[1],
-          dart3: darts[2] * dartMultipliers[2],
-          total: score,
-          isFinish: remaining - score === 0,
-          orderNo: store.getThrowHistory().length
-        });
-      }
-
-      // Remaining aktualisieren
-      store.setRemaining(currentPlayer, remaining - score);
-
-      // Spieler wechseln
-      store.setCurrentPlayer(switchPlayer(currentPlayer));
-
-      // UI aktualisieren
-      updateRestpunkteUI();
-      updateSetsLegsUI(bestSet, bestLeg);
-      updateAverages();
-      updateDetailedStats();
-
-      // Keypad zurücksetzen
-      clearAllDarts();
-      resetMultiplierButtons(container);
-      updateDartDisplays(container);
-      submitBtn.textContent = 'Weiter →';
-
-      // Leg-Ende prüfen
-      if (store.getRemainingP1() === 0 || store.getRemainingP2() === 0) {
-        const matchEnded = await handleLegEnd('Keypad Submit');
-        if (matchEnded) return;
-      }
-
-      // Callback aufrufen
-      if (onScoreSubmitted) {
-        onScoreSubmitted(score);
-      }
+      await handleScoreSubmit(score, { bestSet, bestLeg });
     });
   }
-}
 
-/**
- * Setzt die Multiplier-Buttons auf Single zurück
- */
-function resetMultiplierButtons(container) {
-  container.querySelectorAll('.mult-btn').forEach(btn => {
-    const mult = parseInt(btn.getAttribute('data-mult'));
-    if (mult === MULTIPLIER.SINGLE) {
-      btn.classList.add('ring-2', 'ring-white', 'ring-offset-2');
-    } else {
-      btn.classList.remove('ring-2', 'ring-white', 'ring-offset-2');
-    }
-  });
+  // --- No Score / Bust Button ---
+  const bustBtn = container.querySelector('#bustBtn');
+  if (bustBtn) {
+    bustBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      currentInput = '';
+      updateScoreDisplay();
+
+      // 0 Punkte eingeben = Spieler hat nichts getroffen / Bust
+      await processScore(0, { bestSet, bestLeg });
+    });
+  }
 }

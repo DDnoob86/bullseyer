@@ -3,15 +3,51 @@ import * as store from '../../state/store.js';
 import { saveThrow } from '../../services/match.js';
 import { getPlayerId, switchPlayer } from '../../utils/players.js';
 import { distributeDarts, PLAYER } from '../../utils/constants.js';
-import { checkBust, isValidQuickScoreDoubleOut, handleLegEnd } from './game-logic.js';
-import { updateRestpunkteUI, updateSetsLegsUI, updateAverages, updateDetailedStats } from './display.js';
+import { isValidCheckout } from '../../utils/checkouts.js';
+import { handleLegEnd } from './game-logic.js';
+import { updateAllDisplays, updateCheckoutHint } from './display.js';
 
 // Delegation Handler Reference
 let delegationHandler = null;
 
 /**
- * Initialisiert den globalen Event-Delegation-Handler
- * @param {Object} options - { bestSet, bestLeg }
+ * Zeigt einen Bust-Toast an
+ */
+function showBustToast(message) {
+  const toast = document.getElementById('bustToast');
+  if (!toast) return;
+  const textEl = toast.querySelector('div');
+  if (textEl) textEl.textContent = message || 'BUST! 💥';
+  toast.classList.remove('hidden');
+  setTimeout(() => toast.classList.add('hidden'), 1200);
+}
+
+/**
+ * Öffnet den Checkout-Dialog
+ */
+function showCheckoutDialog(remaining) {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById('checkoutDialog');
+    const text = document.getElementById('checkoutText');
+    if (!dialog) { resolve(3); return; }
+    text.textContent = `${remaining} ausgecheckt! Wie viele Darts?`;
+    dialog.classList.remove('hidden');
+    dialog.classList.add('flex');
+
+    const buttons = dialog.querySelectorAll('.checkout-dart-btn');
+    const handler = (e) => {
+      const darts = parseInt(e.target.dataset.darts);
+      buttons.forEach(b => b.removeEventListener('click', handler));
+      dialog.classList.add('hidden');
+      dialog.classList.remove('flex');
+      resolve(darts);
+    };
+    buttons.forEach(b => b.addEventListener('click', handler));
+  });
+}
+
+/**
+ * Initialisiert den globalen Event-Delegation-Handler für Quick-Score Buttons
  */
 export function initEventDelegation(options = {}) {
   const { bestSet = 3, bestLeg = 3 } = options;
@@ -19,27 +55,16 @@ export function initEventDelegation(options = {}) {
   // Alten Handler entfernen
   if (delegationHandler) {
     document.body.removeEventListener('click', delegationHandler);
-    console.log('[Events] Alter Delegation-Handler entfernt');
   }
 
   delegationHandler = async function(e) {
-    const appEl = document.getElementById('app');
-    if (!appEl || !appEl.contains(e.target)) return;
-
-    const btn = e.target.closest('button');
+    const btn = e.target.closest('button.quick-score-btn');
     if (!btn) return;
 
-    // Keypad-Buttons ausschließen (haben eigene Handler)
-    const isKeypadBtn = btn.classList.contains('keypad-btn') ||
-                        btn.id === 'clearBtn' ||
-                        btn.id === 'backspaceBtn' ||
-                        btn.id === 'submitScore';
-    if (isKeypadBtn) return;
+    const score = parseInt(btn.dataset.score, 10);
+    if (isNaN(score) || score < 0 || score > 180) return;
 
-    // Quick-Score Buttons behandeln
-    if (btn.hasAttribute('data-score')) {
-      await handleQuickScore(btn, bestSet, bestLeg);
-    }
+    await handleQuickScore(score, bestSet, bestLeg);
   };
 
   document.body.addEventListener('click', delegationHandler);
@@ -53,49 +78,52 @@ export function cleanupEventDelegation() {
   if (delegationHandler) {
     document.body.removeEventListener('click', delegationHandler);
     delegationHandler = null;
-    console.log('[Events] Delegation-Handler entfernt');
   }
 }
 
 /**
  * Behandelt Quick-Score Button-Klicks
  */
-async function handleQuickScore(btn, bestSet, bestLeg) {
-  const score = parseInt(btn.dataset.score, 10);
-  if (isNaN(score) || score < 0 || score > 180) {
-    console.error('[Events] Ungültiger Quick-Score:', score);
-    return;
-  }
-
+async function handleQuickScore(score, bestSet, bestLeg) {
   const match = store.getCurrentMatch();
   const currentPlayer = store.getCurrentPlayer();
   const remaining = store.getRemaining(currentPlayer);
+  const isDoubleOut = match?.double_out;
+  const newRemaining = remaining - score;
 
-  // Dart-Verteilung berechnen
-  const dartValues = distributeDarts(score);
-
-  // Bust-Check
-  const bustResult = checkBust(score, remaining, match?.double_out);
-  if (bustResult.isBust) {
-    alert(bustResult.reason);
-    // Spieler wechseln bei Bust
+  // Bust-Checks
+  if (score > remaining) {
+    showBustToast('BUST! Zu hoch 💥');
     store.setCurrentPlayer(switchPlayer(currentPlayer));
-    updateRestpunkteUI();
+    updateAllDisplays(bestSet, bestLeg);
+    updateCheckoutHint();
     return;
   }
 
-  // Double-Out Validierung für Quick-Scores
-  if (remaining - score === 0 && match?.double_out) {
-    if (!isValidQuickScoreDoubleOut(score, remaining, dartValues)) {
-      alert('BUST! Muss mit Double finishen.');
-      // Spieler wechseln bei Bust
-      store.setCurrentPlayer(switchPlayer(currentPlayer));
-      updateRestpunkteUI();
-      return;
-    }
+  if (newRemaining === 1 && isDoubleOut) {
+    showBustToast('BUST! Rest = 1 💥');
+    store.setCurrentPlayer(switchPlayer(currentPlayer));
+    updateAllDisplays(bestSet, bestLeg);
+    updateCheckoutHint();
+    return;
   }
 
-  // Wurf in History speichern
+  const isFinish = newRemaining === 0;
+  let finishDarts = 3;
+
+  // Checkout?
+  if (isFinish) {
+    if (isDoubleOut && !isValidCheckout(remaining)) {
+      showBustToast('BUST! Kein Checkout 💥');
+      store.setCurrentPlayer(switchPlayer(currentPlayer));
+      updateAllDisplays(bestSet, bestLeg);
+      updateCheckoutHint();
+      return;
+    }
+    finishDarts = await showCheckoutDialog(remaining);
+  }
+
+  // Wurf speichern
   store.addThrow({
     player: currentPlayer,
     score,
@@ -110,8 +138,9 @@ async function handleQuickScore(btn, bestSet, bestLeg) {
     gameStarter: store.getGameStarter()
   });
 
-  // Wurf in DB speichern
+  // Wurf in DB
   const leg = store.getCurrentLeg();
+  const dartValues = distributeDarts(score);
   if (match && leg) {
     await saveThrow({
       matchId: match.id,
@@ -121,80 +150,65 @@ async function handleQuickScore(btn, bestSet, bestLeg) {
       dart2: dartValues[1],
       dart3: dartValues[2],
       total: score,
-      isFinish: remaining - score === 0,
+      isFinish,
       orderNo: store.getThrowHistory().length
     });
   }
 
   // Remaining aktualisieren
-  store.setRemaining(currentPlayer, remaining - score);
+  store.setRemaining(currentPlayer, newRemaining);
 
   // Spieler wechseln
   store.setCurrentPlayer(switchPlayer(currentPlayer));
 
   // UI aktualisieren
-  updateRestpunkteUI();
-  updateSetsLegsUI(bestSet, bestLeg);
-  updateAverages();
-  updateDetailedStats();
+  updateAllDisplays(bestSet, bestLeg);
+  updateCheckoutHint();
 
-  console.log('[Events] Quick-Score verarbeitet:', score, 'Neuer Spieler:', store.getCurrentPlayer());
+  console.log('[Events] Quick-Score:', score, 'Finish:', isFinish);
 
   // Leg-Ende prüfen
-  if (store.getRemainingP1() === 0 || store.getRemainingP2() === 0) {
+  if (isFinish) {
+    if (leg) leg.finishDarts = finishDarts;
     await handleLegEnd('Quick-Score');
+    updateCheckoutHint();
   }
 }
 
 /**
  * Initialisiert den Undo-Button Handler
- * @param {HTMLElement} container - Der App-Container
- * @param {Function} onUndo - Callback nach Undo
  */
 export function initUndoHandler(container, onUndo) {
   const undoBtn = container.querySelector('#undoBtn');
-  const undoContainer = undoBtn?.parentElement;
+  if (!undoBtn) return;
 
-  if (!undoBtn || !undoContainer || undoContainer.hasAttribute('data-bullseyer-undo-initialized')) {
-    return;
-  }
-  undoContainer.setAttribute('data-bullseyer-undo-initialized', 'true');
+  const undoContainer = undoBtn.parentElement;
+  if (undoContainer?.hasAttribute('data-bullseyer-undo-initialized')) return;
+  if (undoContainer) undoContainer.setAttribute('data-bullseyer-undo-initialized', 'true');
 
   undoBtn.addEventListener('click', () => {
     const lastThrow = store.undoLastThrow();
     if (!lastThrow) {
-      console.log('[Events] Keine Würfe zum Rückgängig machen');
+      console.log('[Events] Nichts zum Rückgängig machen');
       return;
     }
-
-    console.log('[Events] Undo ausgeführt:', lastThrow);
-
-    // UI aktualisieren
-    updateRestpunkteUI();
-    updateSetsLegsUI(3, 3); // TODO: bestSet/bestLeg übergeben
-    updateAverages();
-    updateDetailedStats();
-
-    if (onUndo) {
-      onUndo(lastThrow);
-    }
+    console.log('[Events] Undo:', lastThrow);
+    if (onUndo) onUndo(lastThrow);
   });
 }
 
 /**
  * Initialisiert die Startspieler-Auswahl
- * @param {HTMLElement} container - Der App-Container
- * @param {Function} onStarterSelected - Callback wenn Startspieler gewählt
  */
 export function initStarterSelection(container, onStarterSelected) {
   const startP1Btn = container.querySelector('#startP1');
   const startP2Btn = container.querySelector('#startP2');
   const starterSelection = container.querySelector('#starterSelection');
-  const inputArea = container.querySelector('.flex.gap-6.mb-6');
+  const inputArea = container.querySelector('#scoreInputArea');
 
   // Eingabe deaktivieren bis Startspieler gewählt
   if (store.getGameStarter() === null && inputArea) {
-    inputArea.style.opacity = '0.5';
+    inputArea.style.opacity = '0.3';
     inputArea.style.pointerEvents = 'none';
   }
 
@@ -211,31 +225,23 @@ export function initStarterSelection(container, onStarterSelected) {
   }
 }
 
-/**
- * Setzt den Startspieler
- */
 function selectStarter(player, starterSelection, inputArea, callback) {
   store.setGameStarter(player);
   store.setLegStarter(player);
   store.setCurrentPlayer(player);
 
-  // UI aktualisieren
   if (starterSelection) starterSelection.style.display = 'none';
   if (inputArea) {
     inputArea.style.opacity = '1';
     inputArea.style.pointerEvents = 'auto';
   }
 
-  console.log('[Events] Startspieler gewählt:', player);
-
-  if (callback) {
-    callback(player);
-  }
+  console.log('[Events] Startspieler:', player);
+  if (callback) callback(player);
 }
 
 /**
- * Initialisiert den Zurück-Button Handler
- * @param {HTMLElement} container - Der App-Container
+ * Initialisiert den Zurück-Button
  */
 export function initBackButton(container) {
   const backBtn = container.querySelector('#backToMatchSelect');
@@ -244,18 +250,14 @@ export function initBackButton(container) {
   backBtn.onclick = () => {
     store.resetState();
     localStorage.removeItem('bullseyer_currentMatchId');
-
-    // Header wieder einblenden
     const mainHeader = document.getElementById('mainHeader');
     if (mainHeader) mainHeader.style.display = 'block';
-
     window.location.hash = '#/scorer';
   };
 }
 
 /**
- * Initialisiert den Toggle-Stats Button
- * @param {HTMLElement} container - Der App-Container
+ * Initialisiert den Stats-Toggle
  */
 export function initStatsToggle(container) {
   const toggleStatsBtn = container.querySelector('#toggleStats');
@@ -264,7 +266,6 @@ export function initStatsToggle(container) {
   toggleStatsBtn.addEventListener('click', () => {
     const statsDetails = container.querySelector('#statsDetails');
     const toggleText = container.querySelector('#toggleStatsText');
-
     if (statsDetails && toggleText) {
       if (statsDetails.classList.contains('hidden')) {
         statsDetails.classList.remove('hidden');
