@@ -1,12 +1,12 @@
 // Vereinfachte Score-Eingabe - Gesamtpunktzahl statt Einzeldarts
-// Wie DartCounter: Zahl eintippen → OK → bei Checkout: "Wie viele Darts?"
 import * as store from '../../state/store.js';
 import { saveThrow } from '../../services/match.js';
 import { getPlayerId, switchPlayer } from '../../utils/players.js';
 import { distributeDarts } from '../../utils/constants.js';
 import { isValidCheckout } from '../../utils/checkouts.js';
-import { checkBust, handleLegEnd } from './game-logic.js';
+import { handleLegEnd } from './game-logic.js';
 import { updateAllDisplays, updateCheckoutHint } from './display.js';
+import { showCheckoutDialog, showBustToast } from './dialogs.js';
 
 // Eingabe-State
 let currentInput = '';
@@ -34,40 +34,24 @@ function updateScoreDisplay() {
 }
 
 /**
- * Zeigt einen Bust-Toast an
- */
-function showBustToast(message) {
-  const toast = document.getElementById('bustToast');
-  if (!toast) return;
-
-  const textEl = toast.querySelector('div');
-  if (textEl) textEl.textContent = message || 'BUST! 💥';
-
-  toast.classList.remove('hidden');
-  setTimeout(() => toast.classList.add('hidden'), 1200);
-}
-
-/**
  * Verarbeitet einen Score (von Numpad oder Quick-Score)
  * @param {number} score - Gesamtpunktzahl der Aufnahme
- * @param {Object} options - { bestSet, bestLeg, finishDarts }
+ * @param {Object} options - { bestSet, bestLeg, finishDarts, bullfinish }
  */
 async function processScore(score, options = {}) {
-  const { bestSet = 3, bestLeg = 3, finishDarts = 3 } = options;
+  const { bestSet = 3, bestLeg = 3, finishDarts = 3, bullfinish = false } = options;
 
   const match = store.getCurrentMatch();
   const currentPlayer = store.getCurrentPlayer();
   const remaining = store.getRemaining(currentPlayer);
   const isDoubleOut = match?.double_out;
-
-  // Bust-Check
   const newRemaining = remaining - score;
 
+  // Bust-Checks
   if (score > remaining) {
     showBustToast('BUST! Zu hoch 💥');
     store.setCurrentPlayer(switchPlayer(currentPlayer));
     updateAllDisplays(bestSet, bestLeg);
-    updateCheckoutHint();
     return;
   }
 
@@ -75,7 +59,6 @@ async function processScore(score, options = {}) {
     showBustToast('BUST! Rest = 1 💥');
     store.setCurrentPlayer(switchPlayer(currentPlayer));
     updateAllDisplays(bestSet, bestLeg);
-    updateCheckoutHint();
     return;
   }
 
@@ -83,11 +66,15 @@ async function processScore(score, options = {}) {
     showBustToast('BUST! Kein Checkout 💥');
     store.setCurrentPlayer(switchPlayer(currentPlayer));
     updateAllDisplays(bestSet, bestLeg);
-    updateCheckoutHint();
     return;
   }
 
   const isFinish = newRemaining === 0;
+
+  // Bullfinish im Store setzen
+  if (bullfinish) {
+    store.setBullfinish(true);
+  }
 
   // Wurf in History speichern
   store.addThrow({
@@ -99,7 +86,7 @@ async function processScore(score, options = {}) {
     setsWon: store.getSetsWon(),
     legNo: store.getCurrentLegNo(),
     setNo: store.getCurrentSetNo(),
-    bullfinish: store.getBullfinish(),
+    bullfinish: bullfinish || store.getBullfinish(),
     legStarter: store.getLegStarter(),
     gameStarter: store.getGameStarter()
   });
@@ -129,48 +116,14 @@ async function processScore(score, options = {}) {
 
   // UI aktualisieren
   updateAllDisplays(bestSet, bestLeg);
-  updateCheckoutHint();
 
-  console.log('[Keypad] Score verarbeitet:', score, 'Finish:', isFinish, 'Darts:', finishDarts);
+  console.log('[Keypad] Score:', score, 'Finish:', isFinish, 'Darts:', finishDarts, 'Bull:', bullfinish);
 
   // Leg-Ende prüfen
   if (isFinish) {
-    // Finish-Darts am Leg speichern
     if (leg) leg.finishDarts = finishDarts;
-    await handleLegEnd('Score Input');
-    updateCheckoutHint();
+    await handleLegEnd('Score Input', { finishDarts, bullfinish });
   }
-}
-
-/**
- * Öffnet den Checkout-Dialog und wartet auf Dart-Auswahl
- * @param {number} remaining - Der Reststand der gecheckt wird
- * @returns {Promise<number>} Anzahl Darts (1, 2 oder 3)
- */
-function showCheckoutDialog(remaining) {
-  return new Promise((resolve) => {
-    const dialog = document.getElementById('checkoutDialog');
-    const text = document.getElementById('checkoutText');
-    if (!dialog) { resolve(3); return; }
-
-    text.textContent = `${remaining} ausgecheckt! Wie viele Darts?`;
-
-    dialog.classList.remove('hidden');
-    dialog.classList.add('flex');
-
-    // Handler für Dart-Buttons
-    const buttons = dialog.querySelectorAll('.checkout-dart-btn');
-    const handler = (e) => {
-      const darts = parseInt(e.target.dataset.darts);
-      // Cleanup
-      buttons.forEach(b => b.removeEventListener('click', handler));
-      dialog.classList.add('hidden');
-      dialog.classList.remove('flex');
-      resolve(darts);
-    };
-
-    buttons.forEach(b => b.addEventListener('click', handler));
-  });
 }
 
 /**
@@ -187,20 +140,22 @@ async function handleScoreSubmit(score, options = {}) {
   // Ist es ein Checkout?
   if (newRemaining === 0) {
     if (isDoubleOut && !isValidCheckout(remaining)) {
-      // Unmöglicher Checkout → Bust
       showBustToast('BUST! Kein Checkout 💥');
       store.setCurrentPlayer(switchPlayer(currentPlayer));
       updateAllDisplays(bestSet, bestLeg);
-      updateCheckoutHint();
       return;
     }
 
-    // Checkout-Dialog anzeigen
-    const finishDarts = await showCheckoutDialog(remaining);
-    await processScore(score, { ...options, finishDarts });
+    // Checkout-Dialog mit smarter Dart-Begrenzung + Bullfinish-Frage
+    const result = await showCheckoutDialog(remaining);
+    await processScore(score, {
+      ...options,
+      finishDarts: result.darts,
+      bullfinish: result.bullfinish
+    });
   } else {
     // Normaler Score
-    await processScore(score, { ...options, finishDarts: 3 });
+    await processScore(score, { ...options, finishDarts: 3, bullfinish: false });
   }
 }
 
@@ -210,7 +165,6 @@ async function handleScoreSubmit(score, options = {}) {
 export function initScoreInput(container, options = {}) {
   const { bestSet = 3, bestLeg = 3 } = options;
 
-  // Prüfe ob schon initialisiert
   const inputArea = container.querySelector('#scoreInputArea');
   if (!inputArea || inputArea.hasAttribute('data-bullseyer-initialized')) return;
   inputArea.setAttribute('data-bullseyer-initialized', 'true');
@@ -227,8 +181,6 @@ export function initScoreInput(container, options = {}) {
 
       const newInput = currentInput + digit;
       const newValue = parseInt(newInput, 10);
-
-      // Max 180 Punkte pro Aufnahme
       if (newValue > 180) return;
 
       currentInput = newInput;
@@ -278,20 +230,17 @@ export function initScoreInput(container, options = {}) {
 
       currentInput = '';
       updateScoreDisplay();
-
       await handleScoreSubmit(score, { bestSet, bestLeg });
     });
   }
 
-  // --- No Score / Bust Button ---
+  // --- No Score Button ---
   const bustBtn = container.querySelector('#bustBtn');
   if (bustBtn) {
     bustBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
       currentInput = '';
       updateScoreDisplay();
-
-      // 0 Punkte eingeben = Spieler hat nichts getroffen / Bust
       await processScore(0, { bestSet, bestLeg });
     });
   }

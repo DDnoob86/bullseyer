@@ -6,45 +6,10 @@ import { distributeDarts, PLAYER } from '../../utils/constants.js';
 import { isValidCheckout } from '../../utils/checkouts.js';
 import { handleLegEnd } from './game-logic.js';
 import { updateAllDisplays, updateCheckoutHint } from './display.js';
+import { showCheckoutDialog, showBustToast } from './dialogs.js';
 
 // Delegation Handler Reference
 let delegationHandler = null;
-
-/**
- * Zeigt einen Bust-Toast an
- */
-function showBustToast(message) {
-  const toast = document.getElementById('bustToast');
-  if (!toast) return;
-  const textEl = toast.querySelector('div');
-  if (textEl) textEl.textContent = message || 'BUST! 💥';
-  toast.classList.remove('hidden');
-  setTimeout(() => toast.classList.add('hidden'), 1200);
-}
-
-/**
- * Öffnet den Checkout-Dialog
- */
-function showCheckoutDialog(remaining) {
-  return new Promise((resolve) => {
-    const dialog = document.getElementById('checkoutDialog');
-    const text = document.getElementById('checkoutText');
-    if (!dialog) { resolve(3); return; }
-    text.textContent = `${remaining} ausgecheckt! Wie viele Darts?`;
-    dialog.classList.remove('hidden');
-    dialog.classList.add('flex');
-
-    const buttons = dialog.querySelectorAll('.checkout-dart-btn');
-    const handler = (e) => {
-      const darts = parseInt(e.target.dataset.darts);
-      buttons.forEach(b => b.removeEventListener('click', handler));
-      dialog.classList.add('hidden');
-      dialog.classList.remove('flex');
-      resolve(darts);
-    };
-    buttons.forEach(b => b.addEventListener('click', handler));
-  });
-}
 
 /**
  * Initialisiert den globalen Event-Delegation-Handler für Quick-Score Buttons
@@ -52,7 +17,6 @@ function showCheckoutDialog(remaining) {
 export function initEventDelegation(options = {}) {
   const { bestSet = 3, bestLeg = 3 } = options;
 
-  // Alten Handler entfernen
   if (delegationHandler) {
     document.body.removeEventListener('click', delegationHandler);
   }
@@ -68,12 +32,8 @@ export function initEventDelegation(options = {}) {
   };
 
   document.body.addEventListener('click', delegationHandler);
-  console.log('[Events] Delegation-Handler registriert');
 }
 
-/**
- * Entfernt den Delegation-Handler
- */
 export function cleanupEventDelegation() {
   if (delegationHandler) {
     document.body.removeEventListener('click', delegationHandler);
@@ -96,7 +56,6 @@ async function handleQuickScore(score, bestSet, bestLeg) {
     showBustToast('BUST! Zu hoch 💥');
     store.setCurrentPlayer(switchPlayer(currentPlayer));
     updateAllDisplays(bestSet, bestLeg);
-    updateCheckoutHint();
     return;
   }
 
@@ -104,12 +63,12 @@ async function handleQuickScore(score, bestSet, bestLeg) {
     showBustToast('BUST! Rest = 1 💥');
     store.setCurrentPlayer(switchPlayer(currentPlayer));
     updateAllDisplays(bestSet, bestLeg);
-    updateCheckoutHint();
     return;
   }
 
   const isFinish = newRemaining === 0;
   let finishDarts = 3;
+  let bullfinish = false;
 
   // Checkout?
   if (isFinish) {
@@ -117,10 +76,18 @@ async function handleQuickScore(score, bestSet, bestLeg) {
       showBustToast('BUST! Kein Checkout 💥');
       store.setCurrentPlayer(switchPlayer(currentPlayer));
       updateAllDisplays(bestSet, bestLeg);
-      updateCheckoutHint();
       return;
     }
-    finishDarts = await showCheckoutDialog(remaining);
+
+    // Checkout-Dialog mit smarter Dart-Begrenzung + Bullfinish
+    const result = await showCheckoutDialog(remaining);
+    finishDarts = result.darts;
+    bullfinish = result.bullfinish;
+  }
+
+  // Bullfinish im Store
+  if (bullfinish) {
+    store.setBullfinish(true);
   }
 
   // Wurf speichern
@@ -133,7 +100,7 @@ async function handleQuickScore(score, bestSet, bestLeg) {
     setsWon: store.getSetsWon(),
     legNo: store.getCurrentLegNo(),
     setNo: store.getCurrentSetNo(),
-    bullfinish: store.getBullfinish(),
+    bullfinish: bullfinish || store.getBullfinish(),
     legStarter: store.getLegStarter(),
     gameStarter: store.getGameStarter()
   });
@@ -157,21 +124,15 @@ async function handleQuickScore(score, bestSet, bestLeg) {
 
   // Remaining aktualisieren
   store.setRemaining(currentPlayer, newRemaining);
-
-  // Spieler wechseln
   store.setCurrentPlayer(switchPlayer(currentPlayer));
 
   // UI aktualisieren
   updateAllDisplays(bestSet, bestLeg);
-  updateCheckoutHint();
-
-  console.log('[Events] Quick-Score:', score, 'Finish:', isFinish);
 
   // Leg-Ende prüfen
   if (isFinish) {
     if (leg) leg.finishDarts = finishDarts;
-    await handleLegEnd('Quick-Score');
-    updateCheckoutHint();
+    await handleLegEnd('Quick-Score', { finishDarts, bullfinish });
   }
 }
 
@@ -188,10 +149,7 @@ export function initUndoHandler(container, onUndo) {
 
   undoBtn.addEventListener('click', () => {
     const lastThrow = store.undoLastThrow();
-    if (!lastThrow) {
-      console.log('[Events] Nichts zum Rückgängig machen');
-      return;
-    }
+    if (!lastThrow) return;
     console.log('[Events] Undo:', lastThrow);
     if (onUndo) onUndo(lastThrow);
   });
@@ -206,7 +164,6 @@ export function initStarterSelection(container, onStarterSelected) {
   const starterSelection = container.querySelector('#starterSelection');
   const inputArea = container.querySelector('#scoreInputArea');
 
-  // Eingabe deaktivieren bis Startspieler gewählt
   if (store.getGameStarter() === null && inputArea) {
     inputArea.style.opacity = '0.3';
     inputArea.style.pointerEvents = 'none';
@@ -217,7 +174,6 @@ export function initStarterSelection(container, onStarterSelected) {
       selectStarter(PLAYER.P1, starterSelection, inputArea, onStarterSelected);
     });
   }
-
   if (startP2Btn) {
     startP2Btn.addEventListener('click', () => {
       selectStarter(PLAYER.P2, starterSelection, inputArea, onStarterSelected);
@@ -236,13 +192,9 @@ function selectStarter(player, starterSelection, inputArea, callback) {
     inputArea.style.pointerEvents = 'auto';
   }
 
-  console.log('[Events] Startspieler:', player);
   if (callback) callback(player);
 }
 
-/**
- * Initialisiert den Zurück-Button
- */
 export function initBackButton(container) {
   const backBtn = container.querySelector('#backToMatchSelect');
   if (!backBtn) return;
@@ -256,9 +208,6 @@ export function initBackButton(container) {
   };
 }
 
-/**
- * Initialisiert den Stats-Toggle
- */
 export function initStatsToggle(container) {
   const toggleStatsBtn = container.querySelector('#toggleStats');
   if (!toggleStatsBtn) return;
