@@ -1,14 +1,10 @@
 // Event-Handler für den Livescorer
 import * as store from '../../state/store.js';
-import { saveThrow } from '../../services/match.js';
-import { getPlayerId, switchPlayer } from '../../utils/players.js';
-import { distributeDarts, PLAYER } from '../../utils/constants.js';
-import { isValidCheckout } from '../../utils/checkouts.js';
-import { handleLegEnd } from './game-logic.js';
+import { PLAYER } from '../../utils/constants.js';
+import { processScore } from './score-processor.js';
 import { updateAllDisplays, updateCheckoutHint } from './display.js';
-import { showCheckoutDialog, showBustToast } from './dialogs.js';
 
-// Delegation Handler Reference
+// Delegation Handler Reference (für Cleanup)
 let delegationHandler = null;
 
 /**
@@ -17,9 +13,8 @@ let delegationHandler = null;
 export function initEventDelegation(options = {}) {
   const { bestSet = 3, bestLeg = 3 } = options;
 
-  if (delegationHandler) {
-    document.body.removeEventListener('click', delegationHandler);
-  }
+  // Vorherigen Handler entfernen
+  cleanupEventDelegation();
 
   delegationHandler = async function(e) {
     const btn = e.target.closest('button.quick-score-btn');
@@ -28,111 +23,19 @@ export function initEventDelegation(options = {}) {
     const score = parseInt(btn.dataset.score, 10);
     if (isNaN(score) || score < 0 || score > 180) return;
 
-    await handleQuickScore(score, bestSet, bestLeg);
+    await processScore(score, { bestSet, bestLeg, askCheckoutDialog: true });
   };
 
   document.body.addEventListener('click', delegationHandler);
 }
 
+/**
+ * Entfernt den Event-Delegation-Handler (wird beim Routenwechsel aufgerufen)
+ */
 export function cleanupEventDelegation() {
   if (delegationHandler) {
     document.body.removeEventListener('click', delegationHandler);
     delegationHandler = null;
-  }
-}
-
-/**
- * Behandelt Quick-Score Button-Klicks
- */
-async function handleQuickScore(score, bestSet, bestLeg) {
-  const match = store.getCurrentMatch();
-  const currentPlayer = store.getCurrentPlayer();
-  const remaining = store.getRemaining(currentPlayer);
-  const isDoubleOut = match?.double_out;
-  const newRemaining = remaining - score;
-
-  // Bust-Checks
-  if (score > remaining) {
-    showBustToast('BUST! Zu hoch 💥');
-    store.setCurrentPlayer(switchPlayer(currentPlayer));
-    updateAllDisplays(bestSet, bestLeg);
-    return;
-  }
-
-  if (newRemaining === 1 && isDoubleOut) {
-    showBustToast('BUST! Rest = 1 💥');
-    store.setCurrentPlayer(switchPlayer(currentPlayer));
-    updateAllDisplays(bestSet, bestLeg);
-    return;
-  }
-
-  const isFinish = newRemaining === 0;
-  let finishDarts = 3;
-  let bullfinish = false;
-
-  // Checkout?
-  if (isFinish) {
-    if (isDoubleOut && !isValidCheckout(remaining)) {
-      showBustToast('BUST! Kein Checkout 💥');
-      store.setCurrentPlayer(switchPlayer(currentPlayer));
-      updateAllDisplays(bestSet, bestLeg);
-      return;
-    }
-
-    // Checkout-Dialog mit smarter Dart-Begrenzung + Bullfinish
-    const result = await showCheckoutDialog(remaining);
-    finishDarts = result.darts;
-    bullfinish = result.bullfinish;
-  }
-
-  // Bullfinish im Store
-  if (bullfinish) {
-    store.setBullfinish(true);
-  }
-
-  // Wurf speichern
-  store.addThrow({
-    player: currentPlayer,
-    score,
-    remP1: store.getRemainingP1(),
-    remP2: store.getRemainingP2(),
-    legsWon: store.getLegsWon(),
-    setsWon: store.getSetsWon(),
-    legNo: store.getCurrentLegNo(),
-    setNo: store.getCurrentSetNo(),
-    bullfinish: bullfinish || store.getBullfinish(),
-    legStarter: store.getLegStarter(),
-    gameStarter: store.getGameStarter()
-  });
-
-  // Wurf in DB
-  const leg = store.getCurrentLeg();
-  const dartValues = distributeDarts(score);
-  if (match && leg) {
-    await saveThrow({
-      matchId: match.id,
-      legId: leg.id,
-      playerId: getPlayerId(match, currentPlayer),
-      dart1: dartValues[0],
-      dart2: dartValues[1],
-      dart3: dartValues[2],
-      total: score,
-      isFinish,
-      orderNo: store.getThrowHistory().length
-    });
-  }
-
-  // Remaining aktualisieren
-  store.setRemaining(currentPlayer, newRemaining);
-  store.setCurrentPlayer(switchPlayer(currentPlayer));
-
-  // UI aktualisieren
-  updateAllDisplays(bestSet, bestLeg);
-
-  // Leg-Ende prüfen
-  if (isFinish) {
-    if (leg) leg.finishDarts = finishDarts;
-    await handleLegEnd('Quick-Score', { finishDarts, bullfinish });
   }
 }
 
@@ -200,6 +103,7 @@ export function initBackButton(container) {
   if (!backBtn) return;
 
   backBtn.onclick = () => {
+    cleanupEventDelegation();
     store.resetState();
     localStorage.removeItem('bullseyer_currentMatchId');
     const mainHeader = document.getElementById('mainHeader');
@@ -216,13 +120,8 @@ export function initStatsToggle(container) {
     const statsDetails = container.querySelector('#statsDetails');
     const toggleText = container.querySelector('#toggleStatsText');
     if (statsDetails && toggleText) {
-      if (statsDetails.classList.contains('hidden')) {
-        statsDetails.classList.remove('hidden');
-        toggleText.textContent = 'Details ▲';
-      } else {
-        statsDetails.classList.add('hidden');
-        toggleText.textContent = 'Details ▼';
-      }
+      const isHidden = statsDetails.classList.toggle('hidden');
+      toggleText.textContent = isHidden ? 'Details ▼' : 'Details ▲';
     }
   });
 }

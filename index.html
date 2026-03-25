@@ -232,48 +232,19 @@
     <!-- SPA Root -->
     <main id="app" class="flex-1 p-4 container mx-auto"></main>
 
-    <!-- Dark Mode & Navigation Script -->
+    <!-- Dark Mode Script -->
     <script>
-      // Dark Mode Toggle
       (function() {
         const darkModeToggle = document.getElementById('darkModeToggle');
         const html = document.documentElement;
 
-        // Load saved preference or default to light mode
         const savedTheme = localStorage.getItem('bullseyer_theme') || 'light';
-        if (savedTheme === 'dark') {
-          html.classList.add('dark');
-        }
+        if (savedTheme === 'dark') html.classList.add('dark');
 
-        // Toggle dark mode
         darkModeToggle?.addEventListener('click', () => {
           html.classList.toggle('dark');
-          const newTheme = html.classList.contains('dark') ? 'dark' : 'light';
-          localStorage.setItem('bullseyer_theme', newTheme);
+          localStorage.setItem('bullseyer_theme', html.classList.contains('dark') ? 'dark' : 'light');
         });
-
-        // Highlight active navigation link
-        function updateActiveNav() {
-          const hash = window.location.hash || '#/dashboard';
-          const navLinks = document.querySelectorAll('.nav-link');
-
-          navLinks.forEach(link => {
-            const href = link.getAttribute('href');
-            if (hash.startsWith(href)) {
-              link.classList.add('bg-white/30', 'text-white');
-              link.classList.remove('text-white/80');
-            } else {
-              link.classList.remove('bg-white/30', 'text-white');
-              link.classList.add('text-white/80');
-            }
-          });
-        }
-
-        // Update on hash change
-        window.addEventListener('hashchange', updateActiveNav);
-        window.addEventListener('load', updateActiveNav);
-        // Initial update
-        setTimeout(updateActiveNav, 100);
       })();
     </script>
 

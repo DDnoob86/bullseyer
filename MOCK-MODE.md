@@ -1,88 +1,107 @@
 # 🧪 Mock-Modus für lokales Testen
 
-Die App läuft jetzt im **Mock-Modus** ohne Supabase-Backend. Alle Daten werden im Browser (localStorage) gespeichert.
+Die App läuft im **Mock-Modus** ohne Supabase-Backend. Alle Daten werden im Browser (localStorage) gespeichert.
 
 ## ✅ So funktioniert der Mock-Modus
 
-### Login/Registrierung
-1. **Registrieren:** Gib einen beliebigen Namen ein (z.B. "Alice")
-   - Email: egal (wird ignoriert)
-   - Passwort: egal (wird ignoriert)
+### Auto-Login
+- Die App loggt automatisch einen Demo-User ein
+- Login/Register-Seiten werden auf das Dashboard umgeleitet
+- Kein Passwort nötig
 
-2. **Login:** Gib einen der Demo-Spielernamen ein:
-   - Alice, Bob, Charlie, Diana
-   - Email: egal
-   - Passwort: egal
+### Spieler anlegen
+1. **Navigation → „Spieler"**
+2. Namen eingeben (z.B. "Alice", "Bob") → „Hinzufügen"
+3. Spieler stehen sofort für Spieltag-Erstellung bereit
 
 ### Verfügbare Funktionen
-- ✅ Spieler-Verwaltung (Demo-Spieler sind vorinstalliert)
+- ✅ Spielerverwaltung (anlegen, bearbeiten, löschen)
 - ✅ Spieltag erstellen mit Round-Robin-Paarungen
-- ✅ Multi-Board-Support (1-8 Boards)
-- ✅ Live-Scoring mit Sets/Legs/Würfen
-- ✅ Match-Ende-Erkennung
-- ✅ Statistiken (werden in localStorage gespeichert)
+- ✅ Multi-Board-Support (1–8 Boards)
+- ✅ Live-Scoring mit Score- und Rest-Modus
+- ✅ Checkout-Vorschläge & Bullfinish-Tracking
+- ✅ Match-Ende-Erkennung mit Statistik-Screen
+- ✅ Statistik-Seite mit Rangliste & CSV-Export
 - ✅ Undo-Funktion
+- ✅ Spieltag-Vorlagen
+- ✅ Dark Mode
 - ⚠️ Daten bleiben nur im Browser gespeichert (gehen bei Cache-Löschen verloren)
 
 ### Testvorschlag
-1. **Melde dich an** als "Alice"
-2. **Dashboard:** Wähle 2-4 Spieler (blau anklicken)
-3. **Konfiguration:** Best of 3 Sets, Best of 3 Legs, 1-2 Boards
-4. **"Spieltag starten"** klicken
+1. **Spieler anlegen:** Navigation → „Spieler" → 3–4 Namen eingeben
+2. **Dashboard:** Spieler auswählen (blau anklicken)
+3. **Konfiguration:** Best of 1 Set, Best of 3 Legs, 1 Board
+4. **„Spieltag starten"** klicken
 5. **Match auswählen** im Scorer
 6. **Startspieler wählen** beim ersten Leg
-7. **Score eingeben:** Entweder Ziffernblock oder Quick-Score-Buttons
-8. **Match durchspielen** bis zum Ende
-9. **Match-End-Screen** wird automatisch angezeigt mit Statistiken
+7. **Score eingeben:** Quick-Score-Buttons (z.B. 60, 100) oder Numpad
+8. **Match durchspielen** → Endscreen mit Statistiken
+
+---
 
 ## 🔄 Zurück zum echten Backend
 
-Wenn du Supabase eingerichtet hast, ändere in **2 Dateien** den Import:
+Wenn du Supabase eingerichtet hast:
 
-### 1. `js/main.js` (Zeile 3)
+### 1. Credentials eintragen
+
+In `js/supabase.js`:
 ```javascript
-// Von:
-import { supabase } from './supabase-mock.js';
-
-// Zu:
-import { supabase } from './supabase.js';
+const SUPABASE_URL = 'DEINE_URL';
+const SUPABASE_KEY = 'DEIN_ANON_KEY';
 ```
 
-### 2. `js/auth.js` (Zeile 2)
-```javascript
-// Von:
-import { supabase } from './supabase-mock.js';
+### 2. Imports ändern
 
-// Zu:
-import { supabase } from './supabase.js';
+Ersetze `supabase-mock.js` → `supabase.js` in **allen** betroffenen Dateien:
+
+```
+js/main.js
+js/auth.js
+js/services/match.js
+js/services/stats.js
+js/ui/dashboard.js
+js/ui/scorer.js
+js/ui/players.js
+js/ui/stats.js
 ```
 
-Dann trage deine echten Supabase-Credentials in `js/supabase.js` ein.
+> **Quick-Fix:** Suche & Ersetze `supabase-mock.js` → `supabase.js` im gesamten `js/`-Ordner.
+
+### 3. Auto-Login entfernen
+
+In `js/main.js`: Die `autoLoginForTesting()`-Funktion und den Mock-Kommentar bei den Login/Register-Routen entfernen.
+
+---
 
 ## 🗑️ Daten zurücksetzen
 
-Im Browser-Console (F12):
+Browser-Konsole (F12):
+
 ```javascript
 // Alle Mock-Daten löschen:
 localStorage.clear();
 location.reload();
+
+// Oder Mock-DB inspizieren:
+debugMockDB()
+
+// Interaktives Zurücksetzen:
+resetMockDB()
 ```
-
-Oder einzelne Tabellen:
-```javascript
-localStorage.removeItem('mock_users');
-localStorage.removeItem('mock_matches');
-// etc.
-```
-
-## 📝 Bekannte Einschränkungen im Mock-Modus
-
-- ❌ Keine echte Authentifizierung
-- ❌ Keine Realtime-Updates zwischen Devices
-- ❌ Daten gehen bei Browser-Cache-Löschung verloren
-- ❌ Keine Server-seitige Validierung
-- ✅ Aber: Perfekt zum Testen der UI und Workflows!
 
 ---
 
-**Tipp:** Öffne die Browser-Konsole (F12) um Logs zu sehen - sie zeigen dir genau was passiert!
+## 📝 Einschränkungen im Mock-Modus
+
+| Feature | Mock | Echtes Backend |
+|---|---|---|
+| Authentifizierung | Auto-Login | Email/Passwort |
+| Datenspeicherung | localStorage | PostgreSQL |
+| Multi-Device-Sync | ❌ | ✅ Realtime |
+| Datenpersistenz | Bis Cache-Löschung | Permanent |
+| Server-Validierung | ❌ | ✅ RLS |
+
+---
+
+**Tipp:** Öffne die Browser-Konsole (F12) — detaillierte Logs zeigen alle DB-Operationen!
