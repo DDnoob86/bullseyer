@@ -114,14 +114,12 @@ export function initBackButton(container) {
 
 export function initStatsToggle(container) {
   const toggleStatsBtn = container.querySelector('#toggleStats');
-  if (!toggleStatsBtn) return;
+  const closeStatsBtn = container.querySelector('#closeStats');
+  const statsDetails = container.querySelector('#statsDetails');
+  if (!statsDetails) return;
 
-  toggleStatsBtn.addEventListener('click', () => {
-    const statsDetails = container.querySelector('#statsDetails');
-    const toggleText = container.querySelector('#toggleStatsText');
-    if (statsDetails && toggleText) {
-      const isHidden = statsDetails.classList.toggle('hidden');
-      toggleText.textContent = isHidden ? 'Details ▼' : 'Details ▲';
-    }
-  });
+  const toggle = () => statsDetails.classList.toggle('hidden');
+
+  if (toggleStatsBtn) toggleStatsBtn.addEventListener('click', toggle);
+  if (closeStatsBtn) closeStatsBtn.addEventListener('click', toggle);
 }

@@ -1,11 +1,10 @@
-// Score-Eingabe via Numpad - Score-Modus und Rest-Modus
+// Score-Eingabe via Numpad
+// OK = geworfene Punkte | Restscore = verbleibende Punkte
 import * as store from '../../state/store.js';
 import { processScore } from './score-processor.js';
 import { showBustToast } from './dialogs.js';
 
-// Eingabe-State
 let currentInput = '';
-let inputMode = 'score'; // 'score' oder 'rest'
 
 /**
  * Setzt die Score-Eingabe zurück
@@ -15,86 +14,17 @@ export function resetScoreInput() {
   updateScoreDisplay();
 }
 
-/**
- * Gibt den aktuellen Eingabewert zurück
- */
 export function getCurrentInput() {
   return currentInput;
 }
 
-/**
- * Gibt den aktuellen Eingabemodus zurück
- */
-export function getInputMode() {
-  return inputMode;
-}
-
-/**
- * Wechselt den Eingabemodus zwischen 'score' und 'rest'
- */
-export function toggleInputMode() {
-  inputMode = inputMode === 'score' ? 'rest' : 'score';
-  currentInput = '';
-  updateScoreDisplay();
-  updateModeToggleUI();
-}
-
 // ============================================================
-// DISPLAY UPDATES
+// DISPLAY
 // ============================================================
 
 function updateScoreDisplay() {
   const display = document.getElementById('scoreDisplay');
   if (display) display.textContent = currentInput || '0';
-
-  const calcEl = document.getElementById('calculatedScore');
-  if (!calcEl) return;
-
-  if (inputMode === 'rest' && currentInput) {
-    const remaining = store.getRemaining(store.getCurrentPlayer());
-    const restValue = parseInt(currentInput, 10);
-    const calculatedScore = remaining - restValue;
-
-    if (calculatedScore >= 0 && calculatedScore <= 180) {
-      calcEl.textContent = `= ${calculatedScore} geworfen`;
-      calcEl.classList.remove('hidden', 'text-red-500');
-      calcEl.classList.add('text-emerald-600', 'dark:text-emerald-400');
-    } else if (restValue > remaining) {
-      calcEl.textContent = 'Ungültig!';
-      calcEl.classList.remove('hidden', 'text-emerald-600');
-      calcEl.classList.add('text-red-500');
-    } else {
-      calcEl.textContent = `= ${calculatedScore} (>180!)`;
-      calcEl.classList.remove('hidden', 'text-emerald-600');
-      calcEl.classList.add('text-red-500');
-    }
-  } else {
-    calcEl.classList.add('hidden');
-  }
-}
-
-function updateModeToggleUI() {
-  const modeToggle = document.getElementById('inputModeToggle');
-  const modeLabel = document.getElementById('inputModeLabel');
-  const modeDesc = document.getElementById('inputModeDesc');
-  const scoreDisplay = document.getElementById('scoreDisplay');
-
-  const isRest = inputMode === 'rest';
-
-  if (modeToggle) {
-    modeToggle.classList.toggle('bg-blue-500', !isRest);
-    modeToggle.classList.toggle('hover:bg-blue-600', !isRest);
-    modeToggle.classList.toggle('bg-amber-500', isRest);
-    modeToggle.classList.toggle('hover:bg-amber-600', isRest);
-  }
-  if (modeLabel) modeLabel.textContent = isRest ? 'Rest' : 'Score';
-  if (modeDesc) modeDesc.textContent = isRest ? 'Verbleibende Punkte eingeben' : 'Geworfene Punkte eingeben';
-  if (scoreDisplay) {
-    scoreDisplay.classList.toggle('border-gray-300', !isRest);
-    scoreDisplay.classList.toggle('dark:border-slate-500', !isRest);
-    scoreDisplay.classList.toggle('border-amber-400', isRest);
-    scoreDisplay.classList.toggle('dark:border-amber-500', isRest);
-  }
 }
 
 // ============================================================
@@ -102,36 +32,32 @@ function updateModeToggleUI() {
 // ============================================================
 
 /**
- * Rechnet den Eingabewert in einen Score um (je nach Modus)
- * @returns {{ score: number, valid: boolean, errorMsg?: string }}
+ * Interpretiert die Eingabe als geworfene Punkte
  */
-function resolveScore(rawValue) {
-  if (isNaN(rawValue) || rawValue < 0) {
-    return { score: 0, valid: false };
-  }
-
-  if (inputMode === 'rest') {
-    const remaining = store.getRemaining(store.getCurrentPlayer());
-    const score = remaining - rawValue;
-    if (score < 0) return { score: 0, valid: false, errorMsg: 'Rest zu hoch! 💥' };
-    if (score > 180) return { score: 0, valid: false, errorMsg: 'Max 180 pro Aufnahme! 💥' };
-    return { score, valid: true };
-  }
-
-  if (rawValue > 180) {
-    return { score: 0, valid: false, errorMsg: 'Max 180! 💥' };
-  }
-
+function resolveAsScore(rawValue) {
+  if (isNaN(rawValue) || rawValue < 0) return { score: 0, valid: false };
+  if (rawValue > 180) return { score: 0, valid: false, errorMsg: 'Max 180! 💥' };
   return { score: rawValue, valid: true };
+}
+
+/**
+ * Interpretiert die Eingabe als Restscore → berechnet geworfene Punkte
+ */
+function resolveAsRest(rawValue) {
+  if (isNaN(rawValue) || rawValue < 0) return { score: 0, valid: false };
+
+  const remaining = store.getRemaining(store.getCurrentPlayer());
+  const score = remaining - rawValue;
+
+  if (score < 0) return { score: 0, valid: false, errorMsg: 'Rest zu hoch! 💥' };
+  if (score > 180) return { score: 0, valid: false, errorMsg: 'Max 180 pro Aufnahme! 💥' };
+  return { score, valid: true };
 }
 
 // ============================================================
 // INITIALISIERUNG
 // ============================================================
 
-/**
- * Initialisiert die Score-Eingabe
- */
 export function initScoreInput(container, options = {}) {
   const { bestSet = 3, bestLeg = 3 } = options;
 
@@ -152,12 +78,8 @@ export function initScoreInput(container, options = {}) {
       const newInput = currentInput + digit;
       const newValue = parseInt(newInput, 10);
 
-      if (inputMode === 'rest') {
-        const remaining = store.getRemaining(store.getCurrentPlayer());
-        if (newValue > remaining) return;
-      } else {
-        if (newValue > 180) return;
-      }
+      // Max 501 erlauben (könnte Score oder Rest sein)
+      if (newValue > 501) return;
 
       currentInput = newInput;
       updateScoreDisplay();
@@ -178,11 +100,28 @@ export function initScoreInput(container, options = {}) {
     updateScoreDisplay();
   });
 
-  // OK / Submit
+  // OK = geworfene Punkte
   container.querySelector('#submitScore')?.addEventListener('click', async (e) => {
     e.stopPropagation();
     const rawValue = parseInt(currentInput, 10);
-    const { score, valid, errorMsg } = resolveScore(rawValue);
+    const { score, valid, errorMsg } = resolveAsScore(rawValue);
+
+    currentInput = '';
+    updateScoreDisplay();
+
+    if (!valid) {
+      if (errorMsg) showBustToast(errorMsg);
+      return;
+    }
+
+    await processScore(score, { bestSet, bestLeg, askCheckoutDialog: true });
+  });
+
+  // Restscore = verbleibende Punkte → Score berechnen
+  container.querySelector('#submitRest')?.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const rawValue = parseInt(currentInput, 10);
+    const { score, valid, errorMsg } = resolveAsRest(rawValue);
 
     currentInput = '';
     updateScoreDisplay();
@@ -202,12 +141,4 @@ export function initScoreInput(container, options = {}) {
     updateScoreDisplay();
     await processScore(0, { bestSet, bestLeg, askCheckoutDialog: false });
   });
-
-  // Modus-Toggle
-  container.querySelector('#inputModeToggle')?.addEventListener('click', (e) => {
-    e.stopPropagation();
-    toggleInputMode();
-  });
-
-  updateModeToggleUI();
 }
