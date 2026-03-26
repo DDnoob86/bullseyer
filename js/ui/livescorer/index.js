@@ -2,7 +2,7 @@
 import * as store from '../../state/store.js';
 import { createLeg } from '../../services/match.js';
 import { getPlayerNames } from '../../utils/players.js';
-import { START_SCORE, DEFAULT_BEST_OF_LEGS, DEFAULT_BEST_OF_SETS } from '../../utils/constants.js';
+import { START_SCORE, DEFAULT_BEST_OF_LEGS, DEFAULT_BEST_OF_SETS, escapeHTML } from '../../utils/constants.js';
 import { updateAllDisplays, updatePlayerIndicator, updateCheckoutHint } from './display.js';
 import { initScoreInput, resetScoreInput } from './keypad.js';
 import { initEventDelegation, initUndoHandler, initStarterSelection, initBackButton, initStatsToggle } from './events.js';
@@ -190,7 +190,7 @@ function buildPlayerBox(name, key, color, state) {
   return `
     <div class="${key === 'p1' ? 'player1' : 'player2'}-box bg-gradient-to-br from-${color}-50 to-${color}-100 dark:from-${color}-900/40 dark:to-${color}-800/30 border-2 lg:border-3 border-${color}-500 dark:border-${color}-600 rounded-xl lg:rounded-2xl p-2 lg:p-3 flex flex-col items-center shadow-lg transition-all">
       <!-- Name -->
-      <div class="font-bold text-sm lg:text-lg text-${color}-900 dark:text-${color}-100 truncate max-w-full">${name}</div>
+      <div class="font-bold text-sm lg:text-lg text-${color}-900 dark:text-${color}-100 truncate max-w-full">${escapeHTML(name)}</div>
       <!-- Restpunkte -->
       <div class="text-4xl lg:text-6xl font-black text-${color}-700 dark:text-${color}-300 tabular-nums leading-none my-0.5 lg:my-1" id="rest${prefix}">${remaining}</div>
       <!-- Averages -->
@@ -238,7 +238,7 @@ function buildStatsPanel(names) {
       <div id="statsDetails" class="hidden mt-2 lg:mt-3">
         <div class="grid grid-cols-2 gap-2 lg:gap-3">
           <div class="bg-emerald-900/40 rounded-lg p-2 lg:p-2.5 border border-emerald-700/50">
-            <div class="text-[10px] lg:text-xs font-bold text-emerald-400 mb-1 lg:mb-1.5 text-center">${names.p1}</div>
+            <div class="text-[10px] lg:text-xs font-bold text-emerald-400 mb-1 lg:mb-1.5 text-center">${escapeHTML(names.p1)}</div>
             <div class="grid grid-cols-2 gap-x-2 lg:gap-x-3 gap-y-0.5 text-[10px] lg:text-[11px] text-gray-300">
               <span>🎯 180s</span><span id="p1_180s" class="text-right font-bold text-amber-400">0</span>
               <span>💯 140+</span><span id="p1_140plus" class="text-right font-bold text-emerald-400">0</span>
@@ -247,7 +247,7 @@ function buildStatsPanel(names) {
             </div>
           </div>
           <div class="bg-rose-900/40 rounded-lg p-2 lg:p-2.5 border border-rose-700/50">
-            <div class="text-[10px] lg:text-xs font-bold text-rose-400 mb-1 lg:mb-1.5 text-center">${names.p2}</div>
+            <div class="text-[10px] lg:text-xs font-bold text-rose-400 mb-1 lg:mb-1.5 text-center">${escapeHTML(names.p2)}</div>
             <div class="grid grid-cols-2 gap-x-2 lg:gap-x-3 gap-y-0.5 text-[10px] lg:text-[11px] text-gray-300">
               <span>🎯 180s</span><span id="p2_180s" class="text-right font-bold text-amber-400">0</span>
               <span>💯 140+</span><span id="p2_140plus" class="text-right font-bold text-rose-400">0</span>
@@ -266,8 +266,8 @@ function buildStarterSelection(names) {
     <div id="starterSelection" class="bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/40 dark:to-yellow-900/40 border-2 border-amber-400 dark:border-amber-600 rounded-xl p-3 lg:p-4 mb-2 lg:mb-3 text-center shadow-lg">
       <div class="text-sm lg:text-base font-bold mb-2 lg:mb-3 text-amber-900 dark:text-amber-100">Wer beginnt?</div>
       <div class="flex gap-2 lg:gap-3 justify-center">
-        <button id="startP1" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 lg:px-6 py-2 lg:py-3 rounded-xl font-bold shadow-lg transition-all active:scale-95">${names.p1}</button>
-        <button id="startP2" class="bg-rose-600 hover:bg-rose-700 text-white px-4 lg:px-6 py-2 lg:py-3 rounded-xl font-bold shadow-lg transition-all active:scale-95">${names.p2}</button>
+        <button id="startP1" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 lg:px-6 py-2 lg:py-3 rounded-xl font-bold shadow-lg transition-all active:scale-95">${escapeHTML(names.p1)}</button>
+        <button id="startP2" class="bg-rose-600 hover:bg-rose-700 text-white px-4 lg:px-6 py-2 lg:py-3 rounded-xl font-bold shadow-lg transition-all active:scale-95">${escapeHTML(names.p2)}</button>
       </div>
     </div>
   `;

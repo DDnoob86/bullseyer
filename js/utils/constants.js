@@ -65,6 +65,21 @@ export function isValidDoubleOut(score) {
   return (score >= 2 && score <= 40 && score % 2 === 0) || score === 50;
 }
 
+/**
+ * Escaped HTML-Sonderzeichen um XSS zu verhindern
+ * @param {string} str - Unescaped String
+ * @returns {string} Escaped String
+ */
+export function escapeHTML(str) {
+  if (typeof str !== 'string') return String(str ?? '');
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 // Verteilt einen Gesamt-Score auf 3 Darts
 export function distributeDarts(totalScore) {
   if (QUICK_SCORE_DISTRIBUTIONS[totalScore]) {

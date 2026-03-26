@@ -82,6 +82,10 @@ export function generateRoundRobinRounds(players) {
  * @returns {Array<{round: number, board: number, p1: string, p2: string}>}
  */
 export function distributeToBoards(rounds, numBoards) {
+  if (!numBoards || numBoards < 1) {
+    console.warn('[Pairing] Ungültige Board-Anzahl, verwende 1:', numBoards);
+    numBoards = 1;
+  }
   const result = [];
 
   for (const round of rounds) {
