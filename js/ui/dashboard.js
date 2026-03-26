@@ -63,6 +63,17 @@ async function loadDashboardData() {
     console.error('[Dashboard] Fehler beim Laden:', e);
   }
 
+  // Leere Spieltage aufräumen (keine Matches mehr vorhanden)
+  const gamedayIdsWithMatches = new Set(allMatches.map(m => m.gameday_id));
+  const emptyGamedays = allGamedays.filter(gd => !gamedayIdsWithMatches.has(gd.id));
+  if (emptyGamedays.length > 0) {
+    console.log(`[Dashboard] ${emptyGamedays.length} leere Spieltage werden gelöscht`);
+    for (const gd of emptyGamedays) {
+      await supabase.from('gamedays').delete().eq('id', gd.id);
+    }
+    allGamedays = allGamedays.filter(gd => gamedayIdsWithMatches.has(gd.id));
+  }
+
   const { data: players, error } = await supabase
     .from('users')
     .select('id,name')
