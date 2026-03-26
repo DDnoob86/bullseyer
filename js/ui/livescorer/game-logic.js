@@ -1,6 +1,6 @@
 // Game Logic für den Livescorer - Leg/Set/Match Ende Handling
 import * as store from '../../state/store.js';
-import { saveLeg as saveMatchLeg, finishMatch as finishMatchDb, createLeg } from '../../services/match.js';
+import { saveLeg as saveMatchLeg, finishMatch as finishMatchDb, createLeg, cleanupGamedayIfComplete } from '../../services/match.js';
 import { updateSeasonStats, exportMatchToCSV, downloadCSV } from '../../services/stats.js';
 import { PLAYER, START_SCORE } from '../../utils/constants.js';
 import { getPlayerNames, getPlayerId, switchPlayer, getMatchWinner, getSetWinner } from '../../utils/players.js';
@@ -137,6 +137,11 @@ async function handleMatchEnd(winner) {
   await finishMatchDb(match.id, winnerId);
   await updateSeasonStats(match, winner, setsWon, allMatchThrows);
   localStorage.removeItem('bullseyer_currentMatchId');
+
+  // Spieltag aufräumen wenn alle Matches fertig
+  if (match.gameday_id) {
+    cleanupGamedayIfComplete(match.gameday_id);  // fire-and-forget
+  }
 
   showMatchEndScreen(match, winner, setsWon, allMatchThrows, legResults);
 }

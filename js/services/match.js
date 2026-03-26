@@ -277,3 +277,50 @@ export async function getAllOpenMatches() {
     return [];
   }
 }
+
+/**
+ * Prüft ob alle Matches eines Spieltags beendet sind.
+ * Wenn ja, werden Spieltag + alle zugehörigen Daten (Matches, Legs, Throws) gelöscht.
+ * (Season-Stats sind bereits separat in stats_season gespeichert.)
+ *
+ * @param {string} gamedayId - Die Spieltag-ID
+ * @returns {Promise<boolean>} true wenn der Spieltag gelöscht wurde
+ */
+export async function cleanupGamedayIfComplete(gamedayId) {
+  if (!gamedayId) return false;
+
+  try {
+    // Alle Matches dieses Spieltags laden
+    const { data: matches, error } = await supabase
+      .from('matches')
+      .select('id, finished_at')
+      .eq('gameday_id', gamedayId);
+
+    if (error || !matches || matches.length === 0) return false;
+
+    // Prüfe ob noch offene Matches existieren
+    const openMatches = matches.filter(m => !m.finished_at);
+    if (openMatches.length > 0) return false;
+
+    console.log(`[MatchService] Spieltag ${gamedayId} komplett — räume auf (${matches.length} Matches)`);
+
+    // Alle Throws, Legs, Matches löschen
+    const matchIds = matches.map(m => m.id);
+    for (const mid of matchIds) {
+      await supabase.from('throws').delete().eq('match_id', mid);
+      await supabase.from('legs').delete().eq('match_id', mid);
+    }
+    for (const mid of matchIds) {
+      await supabase.from('matches').delete().eq('id', mid);
+    }
+
+    // Spieltag löschen
+    await supabase.from('gamedays').delete().eq('id', gamedayId);
+
+    console.log(`[MatchService] Spieltag ${gamedayId} gelöscht`);
+    return true;
+  } catch (err) {
+    console.error('[MatchService] Fehler beim Aufräumen des Spieltags:', err);
+    return false;
+  }
+}
