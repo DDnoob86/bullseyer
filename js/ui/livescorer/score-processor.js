@@ -6,7 +6,7 @@ import { distributeDarts } from '../../utils/constants.js';
 import { isValidCheckout } from '../../utils/checkouts.js';
 import { handleLegEnd } from './game-logic.js';
 import { updateAllDisplays } from './display.js';
-import { showCheckoutDialog, showBustToast } from './dialogs.js';
+import { showCheckoutDialog, showBustToast, showNotification } from './dialogs.js';
 
 // Lock gegen doppelte Score-Verarbeitung (Race Condition bei schnellem Klicken)
 let isProcessing = false;
@@ -127,8 +127,7 @@ async function _processScoreInternal(score, options) {
       });
     } catch (err) {
       console.error('[ScoreProcessor] Fehler beim Speichern des Wurfs:', err);
-      // Wurf wurde im State gespeichert, DB-Save fehlgeschlagen
-      // TODO: Retry-Mechanismus oder User-Benachrichtigung
+      showNotification('Wurf konnte nicht in DB gespeichert werden', 'warning', 4000);
     }
   }
 

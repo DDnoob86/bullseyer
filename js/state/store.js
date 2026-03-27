@@ -463,6 +463,7 @@ export function resetState() {
   state.legResults = [];
 
   localStorage.removeItem(STORAGE_KEYS.CURRENT_MATCH_ID);
+  localStorage.removeItem(STORAGE_KEYS.MATCH_STATE);
 
   notifySubscribers(['all']);
 }
@@ -484,6 +485,124 @@ export function loadBoardFromStorage() {
 export function getStoredMatchId() {
   return localStorage.getItem(STORAGE_KEYS.CURRENT_MATCH_ID);
 }
+
+// === SESSION RECOVERY ===
+
+/**
+ * Persistiert den aktuellen Match-State in localStorage.
+ * Wird nach jedem relevanten State-Change aufgerufen.
+ */
+export function persistMatchState() {
+  if (!state.currentMatch) {
+    localStorage.removeItem(STORAGE_KEYS.MATCH_STATE);
+    return;
+  }
+
+  try {
+    const snapshot = {
+      version: 1,
+      timestamp: Date.now(),
+      currentMatch: state.currentMatch,
+      remaining: { ...state.remaining },
+      legsWon: { ...state.legsWon },
+      setsWon: { ...state.setsWon },
+      currentPlayer: state.currentPlayer,
+      currentLegNo: state.currentLegNo,
+      currentSetNo: state.currentSetNo,
+      legStarter: state.legStarter,
+      gameStarter: state.gameStarter,
+      bullfinish: state.bullfinish,
+      throwHistory: state.throwHistory,
+      allMatchThrows: state.allMatchThrows,
+      legResults: state.legResults
+    };
+
+    localStorage.setItem(STORAGE_KEYS.MATCH_STATE, JSON.stringify(snapshot));
+  } catch (err) {
+    console.error('[Store] Fehler beim Persistieren des Match-State:', err);
+  }
+}
+
+/**
+ * Prüft ob ein gespeicherter Match-State vorhanden ist
+ * @returns {Object|null} Der gespeicherte State oder null
+ */
+export function getPersistedMatchState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.MATCH_STATE);
+    if (!raw) return null;
+
+    const snapshot = JSON.parse(raw);
+
+    // Prüfe ob der Snapshot gültig und nicht zu alt ist (max 24h)
+    if (!snapshot.version || !snapshot.currentMatch) return null;
+    const maxAge = 24 * 60 * 60 * 1000; // 24 Stunden
+    if (Date.now() - snapshot.timestamp > maxAge) {
+      localStorage.removeItem(STORAGE_KEYS.MATCH_STATE);
+      return null;
+    }
+
+    return snapshot;
+  } catch (err) {
+    console.error('[Store] Fehler beim Laden des gespeicherten State:', err);
+    localStorage.removeItem(STORAGE_KEYS.MATCH_STATE);
+    return null;
+  }
+}
+
+/**
+ * Stellt den Match-State aus einem gespeicherten Snapshot wieder her
+ * @param {Object} snapshot - Der gespeicherte State von getPersistedMatchState()
+ */
+export function restoreMatchState(snapshot) {
+  if (!snapshot || !snapshot.currentMatch) return false;
+
+  state.currentMatch = snapshot.currentMatch;
+  state.currentLeg = null; // Wird beim Rendern neu erstellt
+  state.remaining = snapshot.remaining;
+  state.legsWon = snapshot.legsWon;
+  state.setsWon = snapshot.setsWon;
+  state.currentPlayer = snapshot.currentPlayer;
+  state.currentLegNo = snapshot.currentLegNo;
+  state.currentSetNo = snapshot.currentSetNo;
+  state.legStarter = snapshot.legStarter;
+  state.gameStarter = snapshot.gameStarter;
+  state.bullfinish = snapshot.bullfinish;
+  state.throwHistory = snapshot.throwHistory || [];
+  state.allMatchThrows = snapshot.allMatchThrows || [];
+  state.legResults = snapshot.legResults || [];
+  state.currentLegSaved = false;
+
+  if (snapshot.currentMatch?.id) {
+    localStorage.setItem(STORAGE_KEYS.CURRENT_MATCH_ID, snapshot.currentMatch.id);
+  }
+
+  notifySubscribers(['all']);
+  return true;
+}
+
+/**
+ * Löscht den gespeicherten Match-State
+ */
+export function clearPersistedMatchState() {
+  localStorage.removeItem(STORAGE_KEYS.MATCH_STATE);
+}
+
+// Auto-Persist: Nach jedem relevanten State-Change speichern
+subscribe((changedKeys) => {
+  // Nur persistieren wenn ein aktives Match existiert
+  if (!state.currentMatch) return;
+
+  // Relevante Änderungen die persistiert werden sollen
+  const relevantKeys = ['remaining', 'legsWon', 'setsWon', 'currentPlayer',
+    'currentLegNo', 'currentSetNo', 'throwHistory', 'allMatchThrows',
+    'legResults', 'bullfinish', 'legStarter', 'gameStarter', 'all'];
+
+  const isRelevant = changedKeys.some(k => relevantKeys.includes(k));
+  if (isRelevant) {
+    persistMatchState();
+  }
+});
 
 // Initialisiere Board aus localStorage beim Import
 loadBoardFromStorage();

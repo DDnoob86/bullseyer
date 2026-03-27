@@ -1,11 +1,13 @@
 {
   "name": "Bullseyer Darts",
   "short_name": "Bullseyer",
+  "description": "Darts Live Scoring PWA",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#ffffff",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#10b981",
   "icons": [
-    { "src": "./assets/logo.svg", "sizes": "any", "type": "image/svg+xml" }
+    { "src": "./assets/logo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
   ]
 }

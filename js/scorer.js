@@ -1,4 +1,5 @@
 // js/scorer.js
+import { isValidDoubleOut } from './utils/constants.js';
 
 export class Leg {
   constructor({ legId, startingScore = 501, doubleIn = false, doubleOut = true, skipDoubleValidation = true }) {
@@ -21,25 +22,22 @@ export class Leg {
     if (remaining < 0 || remaining === 1) return;
 
     // Double-In: Erstes Leg nur mit Doppel starten (nur im Advanced Mode)
+    // Prüft ob mindestens ein Dart-Wert ein gültiger Double-Wert ist (D1-D20 = 2-40 gerade, oder Bull = 50)
     if (!this.skipDoubleValidation && this.scores.length === 0 && this.doubleIn) {
-      // TODO: Echte Double-Erkennung für Advanced Mode (erfordert Dart-Details wie "D20")
-      // Temporär deaktiviert - wird in Phase 2 implementiert
-      const openedWithDouble = darts.some(v => v % 2 === 0);
+      const openedWithDouble = darts.some(v => isValidDoubleOut(v));
       if (!openedWithDouble) {
-        // ungültiges Öffnen → ignorieren
         return;
       }
     }
 
     this.scores.push({ playerId, darts, remaining });
 
-    // Double-Out: Letzter Dart muss ein Doppel sein (nur im Advanced Mode)
+    // Double-Out: Letzter Dart muss ein gültiger Double-Wert sein (nur im Advanced Mode)
+    // Gültige Doubles: D1-D20 (2, 4, 6, ..., 40) oder Bull (50)
     const lastDart = darts[darts.length - 1];
     if (remaining === 0) {
-      if (!this.skipDoubleValidation && this.doubleOut && lastDart % 2 !== 0) {
-        // TODO: Echte Double-Erkennung für Advanced Mode
-        // Temporär: Simple Mode erlaubt jedes Finish
-        // ungültiges Auschecken → Bust
+      if (!this.skipDoubleValidation && this.doubleOut && !isValidDoubleOut(lastDart)) {
+        // Ungültiges Auschecken → Bust
         this.scores.pop();
         return;
       }

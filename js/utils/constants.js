@@ -18,7 +18,8 @@ export const STORAGE_KEYS = {
   CURRENT_MATCH_ID: 'bullseyer_currentMatchId',
   GAMEDAY: 'bullseyer_gameday',
   THEME: 'bullseyer_theme',
-  MOCK_USER: 'mock_currentUser'
+  MOCK_USER: 'mock_currentUser',
+  MATCH_STATE: 'bullseyer_matchState'
 };
 
 // Score-Kategorien

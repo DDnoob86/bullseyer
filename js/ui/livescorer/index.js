@@ -121,17 +121,17 @@ function buildLivescorerHTML(match, names, bestSet, bestLeg, gameStarter) {
           <div class="flex items-center justify-between">
             <!-- Score Anzeige -->
             <div class="flex-1 text-center">
-              <div id="scoreDisplay" class="text-4xl lg:text-5xl font-bold text-gray-800 dark:text-gray-100 tabular-nums inline-block min-w-[100px] lg:min-w-[140px] border-b-4 border-gray-300 dark:border-slate-500 pb-1 transition-colors">
+              <div id="scoreDisplay" class="text-4xl lg:text-5xl font-bold text-gray-800 dark:text-gray-100 tabular-nums inline-block min-w-[100px] lg:min-w-[140px] border-b-4 border-gray-300 dark:border-slate-500 pb-1 transition-colors" role="status" aria-live="polite" aria-label="Eingegebener Score">
                 0
               </div>
             </div>
 
             <!-- Undo + No Score -->
             <div class="flex flex-col gap-1 lg:gap-1.5">
-              <button id="undoBtn" class="bg-rose-500 hover:bg-rose-600 text-white px-2 lg:px-3 py-1 lg:py-1.5 rounded-lg font-bold text-[10px] lg:text-xs shadow transition-all active:scale-95">
+              <button id="undoBtn" class="bg-rose-500 hover:bg-rose-600 text-white px-2 lg:px-3 py-1 lg:py-1.5 rounded-lg font-bold text-[10px] lg:text-xs shadow transition-all active:scale-95" aria-label="Letzten Wurf rückgängig machen">
                 ⏪ Undo
               </button>
-              <button id="bustBtn" class="bg-gray-500 hover:bg-gray-600 text-white px-2 lg:px-3 py-1 lg:py-1.5 rounded-lg font-bold text-[10px] lg:text-xs shadow transition-all active:scale-95">
+              <button id="bustBtn" class="bg-gray-500 hover:bg-gray-600 text-white px-2 lg:px-3 py-1 lg:py-1.5 rounded-lg font-bold text-[10px] lg:text-xs shadow transition-all active:scale-95" aria-label="Null Punkte eingeben">
                 0 Punkte
               </button>
             </div>
@@ -151,10 +151,10 @@ function buildLivescorerHTML(match, names, bestSet, bestLeg, gameStarter) {
               <button type="button" id="backspaceBtn" class="bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 dark:hover:bg-amber-900/50 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 rounded-lg lg:rounded-xl text-lg lg:text-xl font-bold py-2.5 lg:py-3.5 shadow-sm transition-all active:scale-95">⌫</button>
             </div>
             <div class="flex gap-2 lg:gap-2.5 mt-2 lg:mt-2.5">
-              <button type="button" id="submitScore" class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white text-lg lg:text-xl font-bold py-2.5 lg:py-3.5 rounded-lg lg:rounded-xl shadow-lg transition-all active:scale-95">
+              <button type="button" id="submitScore" class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white text-lg lg:text-xl font-bold py-2.5 lg:py-3.5 rounded-lg lg:rounded-xl shadow-lg transition-all active:scale-95" aria-label="Score bestätigen">
                 OK ✓
               </button>
-              <button type="button" id="submitRest" class="flex-1 bg-amber-500 hover:bg-amber-600 text-white text-sm lg:text-base font-bold py-2.5 lg:py-3.5 rounded-lg lg:rounded-xl shadow-lg transition-all active:scale-95">
+              <button type="button" id="submitRest" class="flex-1 bg-amber-500 hover:bg-amber-600 text-white text-sm lg:text-base font-bold py-2.5 lg:py-3.5 rounded-lg lg:rounded-xl shadow-lg transition-all active:scale-95" aria-label="Restscore eingeben">
                 Restscore
               </button>
             </div>
@@ -169,11 +169,11 @@ function buildLivescorerHTML(match, names, bestSet, bestLeg, gameStarter) {
       </div>
 
       <!-- Hidden Overlays -->
-      <div id="checkoutDialog" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden items-center justify-center">
+      <div id="checkoutDialog" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden items-center justify-center" role="dialog" aria-modal="true" aria-label="Checkout Dialog">
         <div class="dialog-inner bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border-4 border-amber-400 p-6 lg:p-8 mx-4 w-full max-w-sm text-center"></div>
       </div>
-      <div id="legWonOverlay" class="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 hidden items-center justify-center"></div>
-      <div id="bustToast" class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 hidden">
+      <div id="legWonOverlay" class="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 hidden items-center justify-center" role="alert" aria-live="assertive"></div>
+      <div id="bustToast" class="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 hidden" role="alert" aria-live="assertive">
         <div class="bg-red-600 text-white text-2xl lg:text-3xl font-bold px-8 lg:px-10 py-4 lg:py-6 rounded-2xl shadow-2xl animate-bounce">BUST! 💥</div>
       </div>
     </div>
@@ -192,7 +192,7 @@ function buildPlayerBox(name, key, color, state) {
       <!-- Name -->
       <div class="font-bold text-sm lg:text-lg text-${color}-900 dark:text-${color}-100 truncate max-w-full">${escapeHTML(name)}</div>
       <!-- Restpunkte -->
-      <div class="text-4xl lg:text-6xl font-black text-${color}-700 dark:text-${color}-300 tabular-nums leading-none my-0.5 lg:my-1" id="rest${prefix}">${remaining}</div>
+      <div class="text-4xl lg:text-6xl font-black text-${color}-700 dark:text-${color}-300 tabular-nums leading-none my-0.5 lg:my-1" id="rest${prefix}" role="status" aria-live="polite" aria-label="Restpunkte ${escapeHTML(name)}">${remaining}</div>
       <!-- Averages -->
       <div class="flex items-center gap-1 lg:gap-1.5 flex-wrap justify-center">
         <span class="text-[9px] lg:text-[11px] font-semibold bg-${color}-200/80 dark:bg-${color}-800/50 text-${color}-800 dark:text-${color}-200 px-1 lg:px-1.5 py-0.5 rounded" id="avg${prefix}Leg">Leg Ø -</span>

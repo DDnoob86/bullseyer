@@ -55,18 +55,36 @@ export function showCheckoutDialog(remaining) {
 
     // Event-Handler
     const buttons = inner.querySelectorAll('.checkout-dart-btn:not([disabled])');
-    const handler = (e) => {
-      const darts = parseInt(e.target.dataset.darts);
+    const closeDialog = (darts) => {
       const bullfinishEl = inner.querySelector('#bullfinishCheck');
       const bullfinish = bullfinishEl ? bullfinishEl.checked : false;
 
-      // Cleanup
-      buttons.forEach(b => b.removeEventListener('click', handler));
+      buttons.forEach(b => b.removeEventListener('click', clickHandler));
+      document.removeEventListener('keydown', keyHandler);
       dialog.classList.add('hidden');
       dialog.classList.remove('flex');
       resolve({ darts, bullfinish });
     };
-    buttons.forEach(b => b.addEventListener('click', handler));
+
+    const clickHandler = (e) => {
+      const darts = parseInt(e.target.dataset.darts);
+      closeDialog(darts);
+    };
+
+    // Keyboard: 1/2/3 für Dart-Auswahl
+    const keyHandler = (e) => {
+      const num = parseInt(e.key);
+      if (num >= 1 && num <= 3 && num >= minDarts) {
+        e.preventDefault();
+        closeDialog(num);
+      }
+    };
+
+    buttons.forEach(b => b.addEventListener('click', clickHandler));
+    document.addEventListener('keydown', keyHandler);
+
+    // Fokus auf ersten verfügbaren Button setzen
+    if (buttons.length > 0) buttons[0].focus();
   });
 }
 
@@ -81,6 +99,54 @@ export function showBustToast(message) {
   if (textEl) textEl.textContent = message || 'BUST! 💥';
   toast.classList.remove('hidden');
   setTimeout(() => toast.classList.add('hidden'), 1200);
+}
+
+/**
+ * Zeigt einen generischen Notification-Toast an (für Fehler, Warnungen, Info)
+ * Erstellt dynamisch ein Toast-Element, das nach Timeout verschwindet.
+ * @param {string} message - Die anzuzeigende Nachricht
+ * @param {'error'|'warning'|'info'|'success'} type - Art der Benachrichtigung
+ * @param {number} duration - Anzeigedauer in ms (default: 3000)
+ */
+export function showNotification(message, type = 'info', duration = 3000) {
+  const colorMap = {
+    error: 'bg-red-600',
+    warning: 'bg-amber-500',
+    info: 'bg-blue-600',
+    success: 'bg-emerald-600'
+  };
+  const iconMap = {
+    error: '⚠️',
+    warning: '⚡',
+    info: 'ℹ️',
+    success: '✅'
+  };
+
+  const bg = colorMap[type] || colorMap.info;
+  const icon = iconMap[type] || iconMap.info;
+
+  // Vorhandenen Notification-Toast entfernen
+  const existing = document.getElementById('notificationToast');
+  if (existing) existing.remove();
+
+  const toast = document.createElement('div');
+  toast.id = 'notificationToast';
+  toast.className = `fixed top-4 left-1/2 -translate-x-1/2 z-[60] ${bg} text-white px-6 py-3 rounded-xl shadow-2xl flex items-center gap-2 text-sm font-semibold transition-all duration-300 opacity-0 translate-y-[-10px]`;
+  toast.innerHTML = `<span>${icon}</span><span>${message}</span>`;
+  document.body.appendChild(toast);
+
+  // Einblenden
+  requestAnimationFrame(() => {
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateX(-50%) translateY(0)';
+  });
+
+  // Ausblenden + entfernen
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateX(-50%) translateY(-10px)';
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
 }
 
 /**
