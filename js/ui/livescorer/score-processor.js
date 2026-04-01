@@ -6,7 +6,10 @@ import { distributeDarts } from '../../utils/constants.js';
 import { isValidCheckout } from '../../utils/checkouts.js';
 import { handleLegEnd } from './game-logic.js';
 import { updateAllDisplays } from './display.js';
-import { showCheckoutDialog, showBustToast } from './dialogs.js';
+import { showCheckoutDialog, showBustToast, showNotification } from './dialogs.js';
+
+// Lock gegen doppelte Score-Verarbeitung (Race Condition bei schnellem Klicken)
+let isProcessing = false;
 
 /**
  * Verarbeitet einen Score (von Quick-Score ODER Numpad)
@@ -19,6 +22,21 @@ import { showCheckoutDialog, showBustToast } from './dialogs.js';
  * @param {boolean} [options.bullfinish=false] - Nur relevant wenn askCheckoutDialog=false
  */
 export async function processScore(score, options = {}) {
+  // Verhindere gleichzeitige Score-Verarbeitung
+  if (isProcessing) {
+    console.warn('[ScoreProcessor] Score wird bereits verarbeitet, Eingabe ignoriert');
+    return;
+  }
+  isProcessing = true;
+
+  try {
+    await _processScoreInternal(score, options);
+  } finally {
+    isProcessing = false;
+  }
+}
+
+async function _processScoreInternal(score, options) {
   const {
     bestSet = 3,
     bestLeg = 3,
@@ -28,9 +46,14 @@ export async function processScore(score, options = {}) {
   } = options;
 
   const match = store.getCurrentMatch();
+  if (!match) {
+    console.error('[ScoreProcessor] Kein aktives Match im Store');
+    return;
+  }
+
   const currentPlayer = store.getCurrentPlayer();
   const remaining = store.getRemaining(currentPlayer);
-  const isDoubleOut = match?.double_out;
+  const isDoubleOut = match.double_out;
   const newRemaining = remaining - score;
 
   // === BUST CHECKS ===
@@ -86,21 +109,26 @@ export async function processScore(score, options = {}) {
     gameStarter: store.getGameStarter()
   });
 
-  // Wurf in DB
+  // Wurf in DB speichern (mit Fehlerbehandlung)
   const leg = store.getCurrentLeg();
   const dartValues = distributeDarts(score);
   if (match && leg) {
-    await saveThrow({
-      matchId: match.id,
-      legId: leg.id,
-      playerId: getPlayerId(match, currentPlayer),
-      dart1: dartValues[0],
-      dart2: dartValues[1],
-      dart3: dartValues[2],
-      total: score,
-      isFinish,
-      orderNo: store.getThrowHistory().length
-    });
+    try {
+      await saveThrow({
+        matchId: match.id,
+        legId: leg.id,
+        playerId: getPlayerId(match, currentPlayer),
+        dart1: dartValues[0],
+        dart2: dartValues[1],
+        dart3: dartValues[2],
+        total: score,
+        isFinish,
+        orderNo: store.getThrowHistory().length
+      });
+    } catch (err) {
+      console.error('[ScoreProcessor] Fehler beim Speichern des Wurfs:', err);
+      showNotification('Wurf konnte nicht in DB gespeichert werden', 'warning', 4000);
+    }
   }
 
   // === STATE AKTUALISIEREN ===

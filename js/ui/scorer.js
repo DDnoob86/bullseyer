@@ -2,7 +2,7 @@
 import { supabase } from '../supabase-mock.js';
 import * as store from '../state/store.js';
 import { createLeg } from '../services/match.js';
-import { STORAGE_KEYS } from '../utils/constants.js';
+import { STORAGE_KEYS, escapeHTML } from '../utils/constants.js';
 import { ensurePlayerNames } from '../utils/players.js';
 import { navigateTo } from '../router.js';
 import { renderLiveScorer } from './livescorer/index.js';
@@ -46,6 +46,9 @@ export async function renderScorer() {
     return () => cleanupEventDelegation();
   }
 
+  // Recovery-Banner prüfen (falls ein persistierter State existiert aber nicht automatisch geladen wurde)
+  showRecoveryBannerIfNeeded();
+
   // Match-Liste anzeigen
   await renderMatchList();
 
@@ -64,7 +67,21 @@ async function resolveActiveMatch() {
     return storeMatch;
   }
 
-  // Aus localStorage?
+  // Gespeicherten Match-State prüfen (Session Recovery)
+  const persisted = store.getPersistedMatchState();
+  if (persisted) {
+    console.log('[Scorer] Gespeicherter Match-State gefunden, stelle wieder her');
+    store.restoreMatchState(persisted);
+    const restored = store.getCurrentMatch();
+    if (restored) {
+      ensurePlayerNames(restored);
+      // Leg neu erstellen für die aktuelle Leg/Set-Nummer
+      store.setCurrentLeg(createLeg(restored, store.getCurrentSetNo(), store.getCurrentLegNo()));
+      return restored;
+    }
+  }
+
+  // Aus localStorage (Match-ID only, ohne State)?
   const matchId = localStorage.getItem(STORAGE_KEYS.CURRENT_MATCH_ID);
   if (!matchId) return null;
 
@@ -301,6 +318,76 @@ function initScorerEvents(app, boards) {
       renderScorer();
     });
   });
+}
+
+// ============================================================
+// SESSION RECOVERY BANNER
+// ============================================================
+
+function showRecoveryBannerIfNeeded() {
+  const persisted = store.getPersistedMatchState();
+  if (!persisted) return;
+
+  const match = persisted.currentMatch;
+  if (!match) return;
+
+  const p1Name = match.p1_name || match.p1?.name || 'Spieler 1';
+  const p2Name = match.p2_name || match.p2?.name || 'Spieler 2';
+  const setsInfo = `Sets: ${persisted.setsWon?.p1 || 0}-${persisted.setsWon?.p2 || 0}`;
+  const legsInfo = `Legs: ${persisted.legsWon?.p1 || 0}-${persisted.legsWon?.p2 || 0}`;
+  const timeAgo = getTimeAgo(persisted.timestamp);
+
+  const scorerContent = document.getElementById('scorerContent');
+  if (!scorerContent) return;
+
+  const banner = document.createElement('div');
+  banner.id = 'recoveryBanner';
+  banner.className = 'bg-gradient-to-r from-amber-50 to-yellow-50 dark:from-amber-900/30 dark:to-yellow-900/30 border-2 border-amber-400 dark:border-amber-600 rounded-xl p-4 mb-4 shadow-lg';
+  banner.innerHTML = `
+    <div class="flex items-center justify-between flex-wrap gap-3">
+      <div>
+        <div class="text-sm font-bold text-amber-900 dark:text-amber-100">Unterbrochenes Match gefunden</div>
+        <div class="text-xs text-amber-700 dark:text-amber-300 mt-1">
+          ${escapeHTML(p1Name)} vs ${escapeHTML(p2Name)} &bull; ${setsInfo}, ${legsInfo} &bull; ${timeAgo}
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <button id="recoverMatch" class="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg font-bold text-sm shadow transition-all active:scale-95">
+          Fortsetzen
+        </button>
+        <button id="discardRecovery" class="bg-gray-400 hover:bg-gray-500 text-white px-4 py-2 rounded-lg font-bold text-sm shadow transition-all active:scale-95">
+          Verwerfen
+        </button>
+      </div>
+    </div>
+  `;
+
+  scorerContent.insertAdjacentElement('beforebegin', banner);
+
+  document.getElementById('recoverMatch')?.addEventListener('click', () => {
+    store.restoreMatchState(persisted);
+    const restored = store.getCurrentMatch();
+    if (restored) {
+      ensurePlayerNames(restored);
+      store.setCurrentLeg(createLeg(restored, store.getCurrentSetNo(), store.getCurrentLegNo()));
+      navigateTo('#/livescorer');
+    }
+  });
+
+  document.getElementById('discardRecovery')?.addEventListener('click', () => {
+    store.clearPersistedMatchState();
+    banner.remove();
+  });
+}
+
+function getTimeAgo(timestamp) {
+  const diff = Date.now() - timestamp;
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return 'gerade eben';
+  if (minutes < 60) return `vor ${minutes} Min.`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `vor ${hours} Std.`;
+  return 'vor mehr als einem Tag';
 }
 
 // ============================================================

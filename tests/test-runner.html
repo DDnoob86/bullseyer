@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>Bullseyer Tests</title>
+  <style>
+    body { font-family: monospace; padding: 20px; background: #1e293b; color: #e2e8f0; }
+    h1 { color: #10b981; }
+    .suite { margin: 16px 0; padding: 12px; background: #334155; border-radius: 8px; }
+    .suite-name { font-weight: bold; font-size: 14px; color: #94a3b8; margin-bottom: 8px; }
+    .pass { color: #10b981; }
+    .fail { color: #f43f5e; }
+    .test { padding: 2px 0; font-size: 13px; }
+    .summary { margin-top: 20px; padding: 16px; border-radius: 8px; font-size: 16px; font-weight: bold; }
+    .summary.all-pass { background: #064e3b; color: #10b981; }
+    .summary.has-fail { background: #4c0519; color: #f43f5e; }
+  </style>
+</head>
+<body>
+  <h1>Bullseyer Unit Tests</h1>
+  <div id="results"></div>
+  <div id="summary"></div>
+  <script type="module" src="./tests.js"></script>
+</body>
+</html>

@@ -55,18 +55,157 @@ export function showCheckoutDialog(remaining) {
 
     // Event-Handler
     const buttons = inner.querySelectorAll('.checkout-dart-btn:not([disabled])');
-    const handler = (e) => {
-      const darts = parseInt(e.target.dataset.darts);
+    const closeDialog = (darts) => {
       const bullfinishEl = inner.querySelector('#bullfinishCheck');
       const bullfinish = bullfinishEl ? bullfinishEl.checked : false;
 
-      // Cleanup
-      buttons.forEach(b => b.removeEventListener('click', handler));
+      buttons.forEach(b => b.removeEventListener('click', clickHandler));
+      document.removeEventListener('keydown', keyHandler);
       dialog.classList.add('hidden');
       dialog.classList.remove('flex');
       resolve({ darts, bullfinish });
     };
-    buttons.forEach(b => b.addEventListener('click', handler));
+
+    const clickHandler = (e) => {
+      const darts = parseInt(e.target.dataset.darts);
+      closeDialog(darts);
+    };
+
+    // Keyboard: 1/2/3 für Dart-Auswahl
+    const keyHandler = (e) => {
+      const num = parseInt(e.key);
+      if (num >= 1 && num <= 3 && num >= minDarts) {
+        e.preventDefault();
+        closeDialog(num);
+      }
+    };
+
+    buttons.forEach(b => b.addEventListener('click', clickHandler));
+    document.addEventListener('keydown', keyHandler);
+
+    // Fokus auf ersten verfügbaren Button setzen
+    if (buttons.length > 0) buttons[0].focus();
+  });
+}
+
+/**
+ * Zeigt einen Bestätigungs-Dialog für Long-Press Finish
+ * @param {number} score - Der geworfene Score
+ * @param {number} remaining - Aktueller Reststand
+ * @param {number} darts - Anzahl Darts (1, 2 oder 3)
+ * @returns {Promise<{confirmed: boolean, bullfinish: boolean}>}
+ */
+export function showFinishConfirmDialog(score, remaining, darts) {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById('checkoutDialog');
+    if (!dialog) { resolve({ confirmed: false, bullfinish: false }); return; }
+
+    const canBullfinish = isBullfinishPossible(remaining);
+    const suggestion = getCheckoutSuggestion(remaining);
+
+    const inner = dialog.querySelector('.dialog-inner') || dialog.querySelector('div > div');
+    if (!inner) { resolve({ confirmed: false, bullfinish: false }); return; }
+
+    inner.innerHTML = `
+      <div class="text-5xl mb-3">🎯</div>
+      <h3 class="text-2xl font-bold text-amber-700 dark:text-amber-400 mb-1">Finish?</h3>
+      <p class="text-lg text-gray-600 dark:text-gray-300 mb-1">
+        <span class="font-bold text-2xl text-gray-800 dark:text-gray-100">${remaining}</span> ausgecheckt
+      </p>
+      <p class="text-base text-gray-500 dark:text-gray-400 mb-1">mit <span class="font-bold text-xl">${darts}</span> Dart${darts > 1 ? 's' : ''}</p>
+      ${suggestion ? `<p class="text-sm text-amber-600 dark:text-amber-400 mb-4">(${suggestion})</p>` : '<div class="mb-4"></div>'}
+
+      ${canBullfinish ? `
+        <label class="flex items-center justify-center gap-3 cursor-pointer bg-gradient-to-r from-red-50 to-red-100 dark:from-red-900/30 dark:to-red-800/30 border-2 border-red-300 dark:border-red-600 rounded-lg p-3 mb-4 hover:shadow-lg transition-all">
+          <input type="checkbox" id="bullfinishCheck" class="w-5 h-5 text-red-600 rounded focus:ring-red-500" ${remaining === 50 ? 'checked' : ''} />
+          <span class="font-bold text-red-700 dark:text-red-400">🎯 Bullfinish!</span>
+        </label>
+      ` : ''}
+
+      <div class="flex gap-3 justify-center">
+        <button id="finishConfirmYes" class="flex-1 bg-gradient-to-br from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white py-3 rounded-xl font-bold text-lg shadow-lg transition-all transform hover:scale-105">Ja ✓</button>
+        <button id="finishConfirmNo" class="flex-1 bg-gradient-to-br from-gray-400 to-gray-500 hover:from-gray-500 hover:to-gray-600 text-white py-3 rounded-xl font-bold text-lg shadow-lg transition-all transform hover:scale-105">Nein ✗</button>
+      </div>
+    `;
+
+    dialog.classList.remove('hidden');
+    dialog.classList.add('flex');
+
+    const closeDialog = (confirmed) => {
+      const bullfinishEl = inner.querySelector('#bullfinishCheck');
+      const bullfinish = bullfinishEl ? bullfinishEl.checked : false;
+      document.removeEventListener('keydown', keyHandler);
+      dialog.classList.add('hidden');
+      dialog.classList.remove('flex');
+      resolve({ confirmed, bullfinish });
+    };
+
+    inner.querySelector('#finishConfirmYes')?.addEventListener('click', () => closeDialog(true));
+    inner.querySelector('#finishConfirmNo')?.addEventListener('click', () => closeDialog(false));
+
+    const keyHandler = (e) => {
+      if (e.key === 'Enter' || e.key === 'y' || e.key === 'j') { e.preventDefault(); closeDialog(true); }
+      if (e.key === 'Escape' || e.key === 'n') { e.preventDefault(); closeDialog(false); }
+    };
+    document.addEventListener('keydown', keyHandler);
+
+    inner.querySelector('#finishConfirmYes')?.focus();
+  });
+}
+
+/**
+ * Zeigt einen Bestätigungs-Dialog zum Rückgängigmachen des letzten Legs
+ * @param {Object} legResult - Das Leg-Ergebnis das rückgängig gemacht wird
+ * @param {Object} names - { p1: string, p2: string }
+ * @returns {Promise<boolean>} true wenn bestätigt
+ */
+export function showUndoLegDialog(legResult, names) {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById('checkoutDialog');
+    if (!dialog) { resolve(false); return; }
+
+    const winnerName = legResult.winner === 'p1' ? names.p1 : names.p2;
+
+    const inner = dialog.querySelector('.dialog-inner') || dialog.querySelector('div > div');
+    if (!inner) { resolve(false); return; }
+
+    inner.innerHTML = `
+      <div class="text-5xl mb-3">⏪</div>
+      <h3 class="text-2xl font-bold text-rose-700 dark:text-rose-400 mb-2">Leg rückgängig?</h3>
+      <p class="text-base text-gray-600 dark:text-gray-300 mb-1">
+        Set ${legResult.setNo} • Leg ${legResult.legNo}
+      </p>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+        Gewonnen von <span class="font-bold">${winnerName}</span>
+        (Checkout: ${legResult.checkoutScore}, ${legResult.finishDarts} Darts)
+      </p>
+
+      <div class="flex gap-3 justify-center">
+        <button id="undoLegYes" class="flex-1 bg-gradient-to-br from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white py-3 rounded-xl font-bold text-lg shadow-lg transition-all transform hover:scale-105">Ja, rückgängig</button>
+        <button id="undoLegNo" class="flex-1 bg-gradient-to-br from-gray-400 to-gray-500 hover:from-gray-500 hover:to-gray-600 text-white py-3 rounded-xl font-bold text-lg shadow-lg transition-all transform hover:scale-105">Abbrechen</button>
+      </div>
+    `;
+
+    dialog.classList.remove('hidden');
+    dialog.classList.add('flex');
+
+    const closeDialog = (confirmed) => {
+      document.removeEventListener('keydown', keyHandler);
+      dialog.classList.add('hidden');
+      dialog.classList.remove('flex');
+      resolve(confirmed);
+    };
+
+    inner.querySelector('#undoLegYes')?.addEventListener('click', () => closeDialog(true));
+    inner.querySelector('#undoLegNo')?.addEventListener('click', () => closeDialog(false));
+
+    const keyHandler = (e) => {
+      if (e.key === 'Enter' || e.key === 'j') { e.preventDefault(); closeDialog(true); }
+      if (e.key === 'Escape' || e.key === 'n') { e.preventDefault(); closeDialog(false); }
+    };
+    document.addEventListener('keydown', keyHandler);
+
+    inner.querySelector('#undoLegNo')?.focus();
   });
 }
 
@@ -81,6 +220,54 @@ export function showBustToast(message) {
   if (textEl) textEl.textContent = message || 'BUST! 💥';
   toast.classList.remove('hidden');
   setTimeout(() => toast.classList.add('hidden'), 1200);
+}
+
+/**
+ * Zeigt einen generischen Notification-Toast an (für Fehler, Warnungen, Info)
+ * Erstellt dynamisch ein Toast-Element, das nach Timeout verschwindet.
+ * @param {string} message - Die anzuzeigende Nachricht
+ * @param {'error'|'warning'|'info'|'success'} type - Art der Benachrichtigung
+ * @param {number} duration - Anzeigedauer in ms (default: 3000)
+ */
+export function showNotification(message, type = 'info', duration = 3000) {
+  const colorMap = {
+    error: 'bg-red-600',
+    warning: 'bg-amber-500',
+    info: 'bg-blue-600',
+    success: 'bg-emerald-600'
+  };
+  const iconMap = {
+    error: '⚠️',
+    warning: '⚡',
+    info: 'ℹ️',
+    success: '✅'
+  };
+
+  const bg = colorMap[type] || colorMap.info;
+  const icon = iconMap[type] || iconMap.info;
+
+  // Vorhandenen Notification-Toast entfernen
+  const existing = document.getElementById('notificationToast');
+  if (existing) existing.remove();
+
+  const toast = document.createElement('div');
+  toast.id = 'notificationToast';
+  toast.className = `fixed top-4 left-1/2 -translate-x-1/2 z-[60] ${bg} text-white px-6 py-3 rounded-xl shadow-2xl flex items-center gap-2 text-sm font-semibold transition-all duration-300 opacity-0 translate-y-[-10px]`;
+  toast.innerHTML = `<span>${icon}</span><span>${message}</span>`;
+  document.body.appendChild(toast);
+
+  // Einblenden
+  requestAnimationFrame(() => {
+    toast.style.opacity = '1';
+    toast.style.transform = 'translateX(-50%) translateY(0)';
+  });
+
+  // Ausblenden + entfernen
+  setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transform = 'translateX(-50%) translateY(-10px)';
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
 }
 
 /**

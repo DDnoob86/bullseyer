@@ -1,5 +1,6 @@
 // Spielerverwaltung - Anlegen, Bearbeiten, Löschen
 import { supabase } from '../supabase-mock.js';
+import { escapeHTML } from '../utils/constants.js';
 
 export async function renderPlayers() {
   const app = document.getElementById('app');
@@ -258,10 +259,10 @@ function renderPlayerRow(player) {
       <div class="flex items-center gap-3">
         <!-- Avatar -->
         <div class="w-10 h-10 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-white font-bold text-lg shadow-lg">
-          ${player.name.charAt(0).toUpperCase()}
+          ${escapeHTML(player.name.charAt(0).toUpperCase())}
         </div>
         <div>
-          <div class="font-bold text-gray-900 dark:text-gray-100 text-lg">${player.name}</div>
+          <div class="font-bold text-gray-900 dark:text-gray-100 text-lg">${escapeHTML(player.name)}</div>
           ${created ? `<div class="text-xs text-gray-500 dark:text-gray-400">seit ${created}</div>` : ''}
         </div>
       </div>
