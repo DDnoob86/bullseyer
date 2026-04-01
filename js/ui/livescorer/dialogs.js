@@ -154,6 +154,62 @@ export function showFinishConfirmDialog(score, remaining, darts) {
 }
 
 /**
+ * Zeigt einen Bestätigungs-Dialog zum Rückgängigmachen des letzten Legs
+ * @param {Object} legResult - Das Leg-Ergebnis das rückgängig gemacht wird
+ * @param {Object} names - { p1: string, p2: string }
+ * @returns {Promise<boolean>} true wenn bestätigt
+ */
+export function showUndoLegDialog(legResult, names) {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById('checkoutDialog');
+    if (!dialog) { resolve(false); return; }
+
+    const winnerName = legResult.winner === 'p1' ? names.p1 : names.p2;
+
+    const inner = dialog.querySelector('.dialog-inner') || dialog.querySelector('div > div');
+    if (!inner) { resolve(false); return; }
+
+    inner.innerHTML = `
+      <div class="text-5xl mb-3">⏪</div>
+      <h3 class="text-2xl font-bold text-rose-700 dark:text-rose-400 mb-2">Leg rückgängig?</h3>
+      <p class="text-base text-gray-600 dark:text-gray-300 mb-1">
+        Set ${legResult.setNo} • Leg ${legResult.legNo}
+      </p>
+      <p class="text-sm text-gray-500 dark:text-gray-400 mb-4">
+        Gewonnen von <span class="font-bold">${winnerName}</span>
+        (Checkout: ${legResult.checkoutScore}, ${legResult.finishDarts} Darts)
+      </p>
+
+      <div class="flex gap-3 justify-center">
+        <button id="undoLegYes" class="flex-1 bg-gradient-to-br from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white py-3 rounded-xl font-bold text-lg shadow-lg transition-all transform hover:scale-105">Ja, rückgängig</button>
+        <button id="undoLegNo" class="flex-1 bg-gradient-to-br from-gray-400 to-gray-500 hover:from-gray-500 hover:to-gray-600 text-white py-3 rounded-xl font-bold text-lg shadow-lg transition-all transform hover:scale-105">Abbrechen</button>
+      </div>
+    `;
+
+    dialog.classList.remove('hidden');
+    dialog.classList.add('flex');
+
+    const closeDialog = (confirmed) => {
+      document.removeEventListener('keydown', keyHandler);
+      dialog.classList.add('hidden');
+      dialog.classList.remove('flex');
+      resolve(confirmed);
+    };
+
+    inner.querySelector('#undoLegYes')?.addEventListener('click', () => closeDialog(true));
+    inner.querySelector('#undoLegNo')?.addEventListener('click', () => closeDialog(false));
+
+    const keyHandler = (e) => {
+      if (e.key === 'Enter' || e.key === 'j') { e.preventDefault(); closeDialog(true); }
+      if (e.key === 'Escape' || e.key === 'n') { e.preventDefault(); closeDialog(false); }
+    };
+    document.addEventListener('keydown', keyHandler);
+
+    inner.querySelector('#undoLegNo')?.focus();
+  });
+}
+
+/**
  * Zeigt einen Bust-Toast an
  * @param {string} message - Die anzuzeigende Nachricht
  */

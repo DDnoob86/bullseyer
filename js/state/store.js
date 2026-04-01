@@ -293,6 +293,87 @@ export function undoLastThrow() {
   return last;
 }
 
+/**
+ * Macht das letzte beendete Leg rückgängig.
+ * Stellt den State auf den letzten Wurf des vorherigen Legs wieder her.
+ * Kann nur aufgerufen werden, wenn das aktuelle Leg noch keine Würfe hat.
+ * @returns {Object|null} Das entfernte Leg-Ergebnis oder null
+ */
+export function undoLastLeg() {
+  // Nur möglich wenn aktuelles Leg noch leer ist
+  if (state.throwHistory.length > 0) return null;
+  // Es muss ein Leg-Ergebnis geben
+  if (state.legResults.length === 0) return null;
+
+  const removedLeg = state.legResults.pop();
+
+  // allMatchThrows enthält alle Würfe des Matches.
+  // Wir müssen die Würfe des letzten Legs zurückholen → sie als throwHistory setzen.
+  // Das letzte Leg hatte setNo/legNo → finde alle Würfe dieses Legs
+  const lastLegThrows = [];
+  while (state.allMatchThrows.length > 0) {
+    const t = state.allMatchThrows[state.allMatchThrows.length - 1];
+    if (t.setNo === removedLeg.setNo && t.legNo === removedLeg.legNo) {
+      lastLegThrows.unshift(state.allMatchThrows.pop());
+    } else {
+      break;
+    }
+  }
+
+  // throwHistory mit den Würfen des rückgängig gemachten Legs füllen
+  state.throwHistory = lastLegThrows;
+
+  // Leg/Set-Nummer zurücksetzen
+  state.currentSetNo = removedLeg.setNo;
+  state.currentLegNo = removedLeg.legNo;
+
+  // Legs/Sets-Won zurücksetzen: Winner hat ein Leg weniger
+  const winner = removedLeg.winner;
+  if (state.legsWon[winner] > 0) {
+    state.legsWon[winner]--;
+  }
+
+  // Falls ein Set rückgängig gemacht werden muss (legsWon waren 0 weil neues Set)
+  // → Set-Win zurücknehmen und legsWon aus legResults rekonstruieren
+  if (removedLeg.legNo === 1 && state.legResults.length > 0) {
+    // Wir sind in ein neues Set gesprungen → Set-Win rückgängig
+    if (state.setsWon[winner] > 0) {
+      state.setsWon[winner]--;
+    }
+    // legsWon aus verbleibenden legResults für dieses Set rekonstruieren
+    const currentSetLegs = state.legResults.filter(l => l.setNo === removedLeg.setNo);
+    state.legsWon = { [PLAYER.P1]: 0, [PLAYER.P2]: 0 };
+    currentSetLegs.forEach(l => {
+      state.legsWon[l.winner]++;
+    });
+  }
+
+  // Remaining aus dem letzten Wurf des Legs wiederherstellen
+  if (lastLegThrows.length > 0) {
+    const lastThrow = lastLegThrows[lastLegThrows.length - 1];
+    // remaining VOR dem letzten Wurf - Score = remaining NACH dem letzten Wurf
+    state.remaining[PLAYER.P1] = lastThrow.remP1 - (lastThrow.player === PLAYER.P1 ? lastThrow.score : 0);
+    state.remaining[PLAYER.P2] = lastThrow.remP2 - (lastThrow.player === PLAYER.P2 ? lastThrow.score : 0);
+    // currentPlayer ist der nächste nach dem letzten Wurf
+    state.currentPlayer = lastThrow.player === PLAYER.P1 ? PLAYER.P2 : PLAYER.P1;
+  } else {
+    state.remaining = { [PLAYER.P1]: START_SCORE, [PLAYER.P2]: START_SCORE };
+  }
+
+  // Leg Starter wiederherstellen
+  if (lastLegThrows.length > 0 && lastLegThrows[0].legStarter) {
+    state.legStarter = lastLegThrows[0].legStarter;
+  }
+
+  state.bullfinish = false;
+  state.currentLegSaved = false;
+
+  notifySubscribers(['throwHistory', 'allMatchThrows', 'legResults', 'remaining', 'legsWon', 'setsWon',
+    'currentPlayer', 'currentLegNo', 'currentSetNo', 'bullfinish', 'legStarter']);
+
+  return removedLeg;
+}
+
 export function clearThrowHistory() {
   state.throwHistory = [];
   notifySubscribers(['throwHistory']);

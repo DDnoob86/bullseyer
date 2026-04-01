@@ -1,5 +1,5 @@
 // Bullseyer Service Worker - Offline Support
-const CACHE_NAME = 'bullseyer-v7';
+const CACHE_NAME = 'bullseyer-v8';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',

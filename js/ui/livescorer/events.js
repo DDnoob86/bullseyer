@@ -3,6 +3,9 @@ import * as store from '../../state/store.js';
 import { PLAYER } from '../../utils/constants.js';
 import { processScore } from './score-processor.js';
 import { updateAllDisplays, updateCheckoutHint } from './display.js';
+import { showUndoLegDialog } from './dialogs.js';
+import { getPlayerNames } from '../../utils/players.js';
+import { createLeg } from '../../services/match.js';
 
 // Delegation Handler Reference (für Cleanup)
 let delegationHandler = null;
@@ -50,11 +53,34 @@ export function initUndoHandler(container, onUndo) {
   if (undoContainer?.hasAttribute('data-bullseyer-undo-initialized')) return;
   if (undoContainer) undoContainer.setAttribute('data-bullseyer-undo-initialized', 'true');
 
-  undoBtn.addEventListener('click', () => {
+  undoBtn.addEventListener('click', async () => {
+    // 1. Normaler Undo: letzten Wurf rückgängig machen
     const lastThrow = store.undoLastThrow();
-    if (!lastThrow) return;
-    console.log('[Events] Undo:', lastThrow);
-    if (onUndo) onUndo(lastThrow);
+    if (lastThrow) {
+      console.log('[Events] Undo Wurf:', lastThrow);
+      if (onUndo) onUndo(lastThrow);
+      return;
+    }
+
+    // 2. Leg Undo: Wenn kein Wurf da, aber ein Leg-Ergebnis existiert → anbieten
+    const legResults = store.getLegResults();
+    if (legResults.length === 0) return;
+
+    const lastLeg = legResults[legResults.length - 1];
+    const match = store.getCurrentMatch();
+    const names = match ? getPlayerNames(match) : { p1: 'Spieler 1', p2: 'Spieler 2' };
+
+    const confirmed = await showUndoLegDialog(lastLeg, names);
+    if (!confirmed) return;
+
+    const removedLeg = store.undoLastLeg();
+    if (removedLeg) {
+      console.log('[Events] Undo Leg:', removedLeg);
+      // Neues Leg-Objekt erstellen für die DB-Referenz
+      const newLeg = createLeg(match, store.getCurrentSetNo(), store.getCurrentLegNo());
+      store.setCurrentLeg(newLeg);
+      if (onUndo) onUndo(removedLeg);
+    }
   });
 }
 
