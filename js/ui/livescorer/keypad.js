@@ -1,8 +1,10 @@
 // Score-Eingabe via Numpad
 // OK = geworfene Punkte | Restscore = verbleibende Punkte
+// Long-Press auf 1/2/3 = Finish-Shortcut mit X Darts
 import * as store from '../../state/store.js';
 import { processScore } from './score-processor.js';
-import { showBustToast } from './dialogs.js';
+import { showBustToast, showFinishConfirmDialog } from './dialogs.js';
+import { isValidCheckout, getMinCheckoutDarts, isBullfinishPossible } from '../../utils/checkouts.js';
 
 let currentInput = '';
 
@@ -68,11 +70,109 @@ export function initScoreInput(container, options = {}) {
   currentInput = '';
   updateScoreDisplay();
 
+  // Long-Press Tracking
+  const LONG_PRESS_MS = 500;
+  let longPressTimer = null;
+  let longPressTriggered = false;
+
+  /**
+   * Long-Press auf 1/2/3: Finish-Shortcut
+   * Interpretiert den aktuellen Score-Display als geworfene Punkte,
+   * und die gedrückte Ziffer als Anzahl Finish-Darts.
+   */
+  async function handleFinishLongPress(darts) {
+    const currentPlayer = store.getCurrentPlayer();
+    const remaining = store.getRemaining(currentPlayer);
+    const match = store.getCurrentMatch();
+    const isDoubleOut = match?.double_out;
+
+    // Score aus Display holen (was bisher eingegeben wurde)
+    const rawScore = parseInt(currentInput, 10);
+
+    // Wenn kein Score eingegeben: remaining direkt als Checkout-Score nehmen
+    const score = isNaN(rawScore) || rawScore === 0 ? remaining : rawScore;
+
+    // Validierung: Score muss genau remaining treffen
+    if (score !== remaining) {
+      showBustToast('Score muss genau Rest treffen! 💥');
+      return;
+    }
+
+    // Double-Out Validierung
+    if (isDoubleOut && !isValidCheckout(remaining)) {
+      showBustToast('Kein gültiger Checkout! 💥');
+      return;
+    }
+
+    // Min-Darts Validierung
+    const minDarts = getMinCheckoutDarts(remaining);
+    if (darts < minDarts) {
+      showBustToast(`Minimum ${minDarts} Dart${minDarts > 1 ? 's' : ''} nötig! 💥`);
+      return;
+    }
+
+    // Bestätigungsdialog anzeigen
+    const { confirmed, bullfinish } = await showFinishConfirmDialog(score, remaining, darts);
+    if (!confirmed) return;
+
+    // Score verarbeiten (ohne Checkout-Dialog, da Darts schon bekannt)
+    currentInput = '';
+    updateScoreDisplay();
+    await processScore(score, {
+      bestSet, bestLeg,
+      askCheckoutDialog: false,
+      finishDarts: darts,
+      bullfinish
+    });
+  }
+
   // Numpad Ziffern
   container.querySelectorAll('.numpad-btn').forEach(btn => {
+    const digit = btn.getAttribute('data-digit');
+
+    // Long-Press für 1, 2, 3
+    if (digit === '1' || digit === '2' || digit === '3') {
+      const startLongPress = (e) => {
+        e.preventDefault();
+        longPressTriggered = false;
+        longPressTimer = setTimeout(() => {
+          longPressTriggered = true;
+          handleFinishLongPress(parseInt(digit, 10));
+        }, LONG_PRESS_MS);
+      };
+
+      const cancelLongPress = () => {
+        if (longPressTimer) {
+          clearTimeout(longPressTimer);
+          longPressTimer = null;
+        }
+      };
+
+      // Touch events
+      btn.addEventListener('touchstart', startLongPress, { passive: false });
+      btn.addEventListener('touchend', (e) => {
+        cancelLongPress();
+        if (longPressTriggered) {
+          e.preventDefault();
+          return;
+        }
+      });
+      btn.addEventListener('touchmove', cancelLongPress);
+      btn.addEventListener('touchcancel', cancelLongPress);
+
+      // Mouse events (Desktop)
+      btn.addEventListener('mousedown', startLongPress);
+      btn.addEventListener('mouseup', cancelLongPress);
+      btn.addEventListener('mouseleave', cancelLongPress);
+    }
+
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const digit = btn.getAttribute('data-digit');
+      // Long-Press wurde ausgelöst → Click ignorieren
+      if (longPressTriggered) {
+        longPressTriggered = false;
+        return;
+      }
       if (digit === null) return;
 
       const newInput = currentInput + digit;

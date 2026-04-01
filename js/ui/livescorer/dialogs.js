@@ -89,6 +89,71 @@ export function showCheckoutDialog(remaining) {
 }
 
 /**
+ * Zeigt einen Bestätigungs-Dialog für Long-Press Finish
+ * @param {number} score - Der geworfene Score
+ * @param {number} remaining - Aktueller Reststand
+ * @param {number} darts - Anzahl Darts (1, 2 oder 3)
+ * @returns {Promise<{confirmed: boolean, bullfinish: boolean}>}
+ */
+export function showFinishConfirmDialog(score, remaining, darts) {
+  return new Promise((resolve) => {
+    const dialog = document.getElementById('checkoutDialog');
+    if (!dialog) { resolve({ confirmed: false, bullfinish: false }); return; }
+
+    const canBullfinish = isBullfinishPossible(remaining);
+    const suggestion = getCheckoutSuggestion(remaining);
+
+    const inner = dialog.querySelector('.dialog-inner') || dialog.querySelector('div > div');
+    if (!inner) { resolve({ confirmed: false, bullfinish: false }); return; }
+
+    inner.innerHTML = `
+      <div class="text-5xl mb-3">🎯</div>
+      <h3 class="text-2xl font-bold text-amber-700 dark:text-amber-400 mb-1">Finish?</h3>
+      <p class="text-lg text-gray-600 dark:text-gray-300 mb-1">
+        <span class="font-bold text-2xl text-gray-800 dark:text-gray-100">${remaining}</span> ausgecheckt
+      </p>
+      <p class="text-base text-gray-500 dark:text-gray-400 mb-1">mit <span class="font-bold text-xl">${darts}</span> Dart${darts > 1 ? 's' : ''}</p>
+      ${suggestion ? `<p class="text-sm text-amber-600 dark:text-amber-400 mb-4">(${suggestion})</p>` : '<div class="mb-4"></div>'}
+
+      ${canBullfinish ? `
+        <label class="flex items-center justify-center gap-3 cursor-pointer bg-gradient-to-r from-red-50 to-red-100 dark:from-red-900/30 dark:to-red-800/30 border-2 border-red-300 dark:border-red-600 rounded-lg p-3 mb-4 hover:shadow-lg transition-all">
+          <input type="checkbox" id="bullfinishCheck" class="w-5 h-5 text-red-600 rounded focus:ring-red-500" ${remaining === 50 ? 'checked' : ''} />
+          <span class="font-bold text-red-700 dark:text-red-400">🎯 Bullfinish!</span>
+        </label>
+      ` : ''}
+
+      <div class="flex gap-3 justify-center">
+        <button id="finishConfirmYes" class="flex-1 bg-gradient-to-br from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white py-3 rounded-xl font-bold text-lg shadow-lg transition-all transform hover:scale-105">Ja ✓</button>
+        <button id="finishConfirmNo" class="flex-1 bg-gradient-to-br from-gray-400 to-gray-500 hover:from-gray-500 hover:to-gray-600 text-white py-3 rounded-xl font-bold text-lg shadow-lg transition-all transform hover:scale-105">Nein ✗</button>
+      </div>
+    `;
+
+    dialog.classList.remove('hidden');
+    dialog.classList.add('flex');
+
+    const closeDialog = (confirmed) => {
+      const bullfinishEl = inner.querySelector('#bullfinishCheck');
+      const bullfinish = bullfinishEl ? bullfinishEl.checked : false;
+      document.removeEventListener('keydown', keyHandler);
+      dialog.classList.add('hidden');
+      dialog.classList.remove('flex');
+      resolve({ confirmed, bullfinish });
+    };
+
+    inner.querySelector('#finishConfirmYes')?.addEventListener('click', () => closeDialog(true));
+    inner.querySelector('#finishConfirmNo')?.addEventListener('click', () => closeDialog(false));
+
+    const keyHandler = (e) => {
+      if (e.key === 'Enter' || e.key === 'y' || e.key === 'j') { e.preventDefault(); closeDialog(true); }
+      if (e.key === 'Escape' || e.key === 'n') { e.preventDefault(); closeDialog(false); }
+    };
+    document.addEventListener('keydown', keyHandler);
+
+    inner.querySelector('#finishConfirmYes')?.focus();
+  });
+}
+
+/**
  * Zeigt einen Bust-Toast an
  * @param {string} message - Die anzuzeigende Nachricht
  */

@@ -5,7 +5,7 @@ import { getPlayerNames } from '../../utils/players.js';
 import { START_SCORE, DEFAULT_BEST_OF_LEGS, DEFAULT_BEST_OF_SETS, escapeHTML } from '../../utils/constants.js';
 import { updateAllDisplays, updatePlayerIndicator, updateCheckoutHint } from './display.js';
 import { initScoreInput, resetScoreInput } from './keypad.js';
-import { initEventDelegation, initUndoHandler, initStarterSelection, initBackButton, initStatsToggle } from './events.js';
+import { initEventDelegation, initUndoHandler, initStarterSelection, initBackButton } from './events.js';
 
 // Re-exports für Kompatibilität
 export { createLeg as resetLeg } from '../../services/match.js';
@@ -59,7 +59,6 @@ export function renderLiveScorer(params) {
     renderLiveScorer(params);
   });
   initBackButton(app);
-  initStatsToggle(app);
 
   // Initiale UI-Updates
   setTimeout(() => {
@@ -110,60 +109,60 @@ function buildLivescorerHTML(match, names, bestSet, bestLeg, gameStarter) {
       <!-- Startspieler-Auswahl -->
       ${gameStarter === null ? buildStarterSelection(names) : ''}
 
-      <!-- Stats Panel (eingeklappt) -->
-      ${buildStatsPanel(names)}
-
       <!-- Score-Eingabe -->
       <div id="scoreInputArea" class="bg-white dark:bg-slate-800 rounded-xl lg:rounded-2xl border-2 border-gray-200 dark:border-slate-600 shadow-xl overflow-hidden">
 
         <!-- Score Display Bar -->
         <div class="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-slate-700 dark:to-slate-800 px-3 lg:px-4 py-2 border-b border-gray-200 dark:border-slate-600">
           <div class="flex items-center justify-between">
-            <!-- Score Anzeige -->
+            <!-- Undo + 0 Punkte (links) -->
+            <div class="flex gap-1.5 lg:gap-2">
+              <button id="undoBtn" class="bg-rose-500 hover:bg-rose-600 text-white px-2.5 lg:px-3 py-1.5 lg:py-2 rounded-lg font-bold text-[10px] lg:text-xs shadow transition-all active:scale-95" aria-label="Letzten Wurf rückgängig machen">
+                ⏪ Undo
+              </button>
+              <button id="bustBtn" class="bg-gray-500 hover:bg-gray-600 text-white px-2.5 lg:px-3 py-1.5 lg:py-2 rounded-lg font-bold text-[10px] lg:text-xs shadow transition-all active:scale-95" aria-label="Null Punkte eingeben">
+                0 Punkte
+              </button>
+            </div>
+
+            <!-- Score Anzeige (mitte) -->
             <div class="flex-1 text-center">
-              <div id="scoreDisplay" class="text-4xl lg:text-5xl font-bold text-gray-800 dark:text-gray-100 tabular-nums inline-block min-w-[100px] lg:min-w-[140px] border-b-4 border-gray-300 dark:border-slate-500 pb-1 transition-colors" role="status" aria-live="polite" aria-label="Eingegebener Score">
+              <div id="scoreDisplay" class="text-4xl lg:text-5xl font-bold text-gray-800 dark:text-gray-100 tabular-nums inline-block min-w-[80px] lg:min-w-[120px] border-b-4 border-gray-300 dark:border-slate-500 pb-1 transition-colors" role="status" aria-live="polite" aria-label="Eingegebener Score">
                 0
               </div>
             </div>
 
-            <!-- Undo + No Score -->
-            <div class="flex flex-col gap-1 lg:gap-1.5">
-              <button id="undoBtn" class="bg-rose-500 hover:bg-rose-600 text-white px-2 lg:px-3 py-1 lg:py-1.5 rounded-lg font-bold text-[10px] lg:text-xs shadow transition-all active:scale-95" aria-label="Letzten Wurf rückgängig machen">
-                ⏪ Undo
-              </button>
-              <button id="bustBtn" class="bg-gray-500 hover:bg-gray-600 text-white px-2 lg:px-3 py-1 lg:py-1.5 rounded-lg font-bold text-[10px] lg:text-xs shadow transition-all active:scale-95" aria-label="Null Punkte eingeben">
-                0 Punkte
-              </button>
-            </div>
+            <!-- Restscore (rechts oben) -->
+            <button type="button" id="submitRest" class="bg-amber-500 hover:bg-amber-600 text-white px-3 lg:px-4 py-1.5 lg:py-2 rounded-lg font-bold text-[10px] lg:text-xs shadow-lg transition-all active:scale-95" aria-label="Restscore eingeben">
+              Rest ◎
+            </button>
           </div>
         </div>
 
-        <!-- Numpad + Quick Scores -->
-        <div class="flex">
-          <!-- Numpad -->
-          <div class="flex-1 p-2 lg:p-3">
-            <div class="grid grid-cols-3 gap-1.5 lg:gap-2">
+        <!-- Numpad + Quick Scores nebeneinander, gleiche Höhe -->
+        <div class="flex items-stretch gap-1.5 lg:gap-2 p-1.5 lg:p-2">
+          <!-- Numpad (kompakt, feste Breite) -->
+          <div class="w-44 lg:w-52 shrink-0 flex flex-col">
+            <div class="grid grid-cols-3 gap-1 lg:gap-1.5 flex-1">
               ${[1,2,3,4,5,6,7,8,9].map(d => `
-                <button type="button" data-digit="${d}" class="numpad-btn bg-white dark:bg-slate-700 hover:bg-gray-100 dark:hover:bg-slate-600 border border-gray-200 dark:border-slate-500 rounded-lg lg:rounded-xl text-xl lg:text-2xl font-bold text-gray-800 dark:text-white py-2.5 lg:py-3.5 shadow-sm transition-all active:scale-95 active:bg-gray-200">${d}</button>
+                <button type="button" data-digit="${d}" class="numpad-btn bg-white dark:bg-slate-700 hover:bg-gray-100 dark:hover:bg-slate-600 border border-gray-200 dark:border-slate-500 rounded-lg text-base lg:text-lg font-bold text-gray-800 dark:text-white shadow-sm transition-all active:scale-95 active:bg-gray-200">${d}</button>
               `).join('')}
-              <button type="button" id="clearBtn" class="bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg lg:rounded-xl text-lg lg:text-xl font-bold py-2.5 lg:py-3.5 shadow-sm transition-all active:scale-95">C</button>
-              <button type="button" data-digit="0" class="numpad-btn bg-white dark:bg-slate-700 hover:bg-gray-100 dark:hover:bg-slate-600 border border-gray-200 dark:border-slate-500 rounded-lg lg:rounded-xl text-xl lg:text-2xl font-bold text-gray-800 dark:text-white py-2.5 lg:py-3.5 shadow-sm transition-all active:scale-95 active:bg-gray-200">0</button>
-              <button type="button" id="backspaceBtn" class="bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 dark:hover:bg-amber-900/50 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 rounded-lg lg:rounded-xl text-lg lg:text-xl font-bold py-2.5 lg:py-3.5 shadow-sm transition-all active:scale-95">⌫</button>
+              <button type="button" id="clearBtn" class="bg-red-50 dark:bg-red-900/30 hover:bg-red-100 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-lg text-sm lg:text-base font-bold shadow-sm transition-all active:scale-95">C</button>
+              <button type="button" data-digit="0" class="numpad-btn bg-white dark:bg-slate-700 hover:bg-gray-100 dark:hover:bg-slate-600 border border-gray-200 dark:border-slate-500 rounded-lg text-base lg:text-lg font-bold text-gray-800 dark:text-white shadow-sm transition-all active:scale-95 active:bg-gray-200">0</button>
+              <button type="button" id="backspaceBtn" class="bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 dark:hover:bg-amber-900/50 text-amber-600 dark:text-amber-400 border border-amber-200 dark:border-amber-800 rounded-lg text-sm lg:text-base font-bold shadow-sm transition-all active:scale-95">&#x232B;</button>
             </div>
-            <div class="flex gap-2 lg:gap-2.5 mt-2 lg:mt-2.5">
-              <button type="button" id="submitScore" class="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white text-lg lg:text-xl font-bold py-2.5 lg:py-3.5 rounded-lg lg:rounded-xl shadow-lg transition-all active:scale-95" aria-label="Score bestätigen">
-                OK ✓
-              </button>
-              <button type="button" id="submitRest" class="flex-1 bg-amber-500 hover:bg-amber-600 text-white text-sm lg:text-base font-bold py-2.5 lg:py-3.5 rounded-lg lg:rounded-xl shadow-lg transition-all active:scale-95" aria-label="Restscore eingeben">
-                Restscore
-              </button>
-            </div>
+            <!-- OK Button -->
+            <button type="button" id="submitScore" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white text-base lg:text-lg font-bold py-2.5 lg:py-3 rounded-lg shadow-lg transition-all active:scale-95 mt-1.5 lg:mt-2" aria-label="Score bestätigen">
+              OK ✓
+            </button>
           </div>
 
-          <!-- Quick Scores (rechte Spalte) -->
-          <div class="w-20 lg:w-28 bg-gray-50 dark:bg-slate-750 border-l border-gray-200 dark:border-slate-600 p-1.5 lg:p-2 flex flex-col gap-1 lg:gap-1.5">
-            <div class="text-[9px] lg:text-[10px] font-bold text-gray-400 dark:text-gray-500 text-center tracking-wider uppercase">Quick</div>
-            ${buildQuickScoreButtons()}
+          <!-- Quick Scores (2-Spalten-Grid, gleiche Höhe wie Numpad) -->
+          <div class="flex-1 flex flex-col">
+            <div class="text-[9px] lg:text-[10px] font-bold text-gray-400 dark:text-gray-500 text-center tracking-wider uppercase mb-1">Quick Score</div>
+            <div class="grid grid-cols-2 gap-1.5 lg:gap-2 flex-1">
+              ${buildQuickScoreButtons()}
+            </div>
           </div>
         </div>
       </div>
@@ -222,44 +221,10 @@ function buildQuickScoreButtons() {
   ];
 
   return scores.map(s =>
-    `<button data-score="${s.val}" class="quick-score-btn ${s.bg} rounded-md lg:rounded-lg text-sm lg:text-base font-bold py-1.5 lg:py-2 shadow-sm transition-all active:scale-95">${s.val}</button>`
+    `<button data-score="${s.val}" class="quick-score-btn ${s.bg} rounded-xl text-lg lg:text-2xl font-black py-3 lg:py-4 shadow-lg transition-all active:scale-95 hover:shadow-xl hover:scale-105" aria-label="${s.val} Punkte">${s.val}</button>`
   ).join('');
 }
 
-function buildStatsPanel(names) {
-  return `
-    <div class="bg-gray-800 dark:bg-gray-900 rounded-lg lg:rounded-xl p-2 lg:p-3 mb-2 lg:mb-3 shadow-lg border border-gray-700">
-      <div class="flex justify-between items-center">
-        <span class="text-xs lg:text-sm font-bold text-gray-300 flex items-center gap-1.5">📊 Stats</span>
-        <button id="toggleStats" class="text-gray-400 hover:text-white text-xs font-semibold transition-colors">
-          <span id="toggleStatsText">▼ Details</span>
-        </button>
-      </div>
-      <div id="statsDetails" class="hidden mt-2 lg:mt-3">
-        <div class="grid grid-cols-2 gap-2 lg:gap-3">
-          <div class="bg-emerald-900/40 rounded-lg p-2 lg:p-2.5 border border-emerald-700/50">
-            <div class="text-[10px] lg:text-xs font-bold text-emerald-400 mb-1 lg:mb-1.5 text-center">${escapeHTML(names.p1)}</div>
-            <div class="grid grid-cols-2 gap-x-2 lg:gap-x-3 gap-y-0.5 text-[10px] lg:text-[11px] text-gray-300">
-              <span>🎯 180s</span><span id="p1_180s" class="text-right font-bold text-amber-400">0</span>
-              <span>💯 140+</span><span id="p1_140plus" class="text-right font-bold text-emerald-400">0</span>
-              <span>🏆 High</span><span id="p1_highscore" class="text-right font-bold text-white">0</span>
-              <span>🎲 Darts</span><span id="p1_darts_match" class="text-right font-bold">0</span>
-            </div>
-          </div>
-          <div class="bg-rose-900/40 rounded-lg p-2 lg:p-2.5 border border-rose-700/50">
-            <div class="text-[10px] lg:text-xs font-bold text-rose-400 mb-1 lg:mb-1.5 text-center">${escapeHTML(names.p2)}</div>
-            <div class="grid grid-cols-2 gap-x-2 lg:gap-x-3 gap-y-0.5 text-[10px] lg:text-[11px] text-gray-300">
-              <span>🎯 180s</span><span id="p2_180s" class="text-right font-bold text-amber-400">0</span>
-              <span>💯 140+</span><span id="p2_140plus" class="text-right font-bold text-rose-400">0</span>
-              <span>🏆 High</span><span id="p2_highscore" class="text-right font-bold text-white">0</span>
-              <span>🎲 Darts</span><span id="p2_darts_match" class="text-right font-bold">0</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
-}
 
 function buildStarterSelection(names) {
   return `
