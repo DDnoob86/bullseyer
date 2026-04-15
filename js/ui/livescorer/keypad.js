@@ -156,6 +156,15 @@ export function initScoreInput(container, options = {}) {
           e.preventDefault();
           return;
         }
+        // touchstart hat preventDefault() → kein synthetischer click
+        // Daher Ziffer hier manuell eintragen
+        e.preventDefault();
+        const newInput = currentInput + digit;
+        const newValue = parseInt(newInput, 10);
+        if (newValue <= 501) {
+          currentInput = newInput;
+          updateScoreDisplay();
+        }
       });
       btn.addEventListener('touchmove', cancelLongPress);
       btn.addEventListener('touchcancel', cancelLongPress);
